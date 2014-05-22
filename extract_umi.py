@@ -120,10 +120,10 @@ class Extractor:
 
         read1.seq = self.joiner(sequence, sample)
         read1.quals = self.joiner(seq_qual, sample_qual)
-        read1.identifier = read1.identifier + " " + umi
+        read1.identifier = read1.identifier.split("/")[0] + " " + umi
 
         if not read2 is None:
-            read2.identifier = read2.identifier + " " + umi
+            read2.identifier = read2.identifier.split("/")[0] + " " + umi
             return (read1, read2)
         else:
             return read1
@@ -185,8 +185,8 @@ def main(argv=None):
     # write footer and output benchmark information.
 
     if options.stats:
-        E.info("Follows statistics on processing")
-        options.stdlog.write("\t".join(["Barcode", "UMI", "Sample"]) + "\n")
+     
+        options.stdlog.write("\t".join(["Barcode", "UMI", "Sample", "Count"]) + "\n")
         for id in processor.bc_count:
             options.stdlog.write("\t".join(id+(str(processor.bc_count[id]),)) + "\n")
                              

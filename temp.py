@@ -25,7 +25,7 @@
 Pipeline iCLIP
 ===========================
 
-:Author: Ian Sudbery
+:Author: Andreas Heger
 :Release: $Id$
 :Date: |today|
 :Tags: Python
@@ -100,7 +100,6 @@ Code
 
 """
 from ruffus import *
-from ruffus.combinatorics import *
 
 import sys, glob, gzip, os, itertools, re, math, types, collections, time
 import optparse, shutil
@@ -186,15 +185,10 @@ def filterPhiX(infiles, outfile):
     bowtie_threads = PARAMS["phix_bowtie_threads"]
     bam_out = P.snip(infile,".fastq.gz") + ".phix.bam"
     statement = m.build((infile,),bam_out)
-    statement += "checkpoint; gzip %(outfile)s"
+    statement += "; checkpoint; gzip %(outfile)s"
     P.run()
 
 
-@transform("sample_table.tsv", suffix(".tsv"), ".load")
-def loadSampleInfo(infile, outfile):
-
-    P.load(infile, outfile,
-           options="--header=format,barcode,track -i barcode -i track")
 ###################################################################
 @follows(mkdir("demux_fq"))
 @transform(filterPhiX, regex("(.+).fastq.clean.gz"),
@@ -246,7 +240,7 @@ def generateReaperMetaData(infile, outfile):
 @follows(loadUMIStats)
 @split(extractUMI, regex(".+/(.+).fastq.umi_trimmed.gz"),
        add_inputs(generateReaperMetaData, "sample_table.tsv"),
-       r"demux_fq/*_\1.fastq.1.gz")
+       r"demux_fq/*_\1.fastq.gz")
 def demux_fastq(infiles, outfiles):
     '''Demultiplex each fastq file into a seperate file for each
     barcode/UMI combination'''
@@ -270,53 +264,10 @@ def demux_fastq(infiles, outfiles):
         name = name.strip()
         statement += '''checkpoint;
                         mv demux_fq/%(track)s_%(bc)s.clean.gz
-                           demux_fq/%(name)s_%(track)s.fastq.1.gz; ''' % locals()
+                           demux_fq/%(name)s_%(track)s.fastq.gz; ''' % locals()
 
     P.run()
 
-
-###################################################################
-@active_if(PARAMS["reads_paired"]==1)
-@transform("*.fastq.2.gz", suffix(".fastq.2.gz"),
-           ".fastq.reaped.2.gz")
-def reapRead2(infile,outfile):
-
-    track = P.snip(outfile,".fastq.reaped.2.gz")
-    statement = ''' reaper -geom no-bc
-                           -3pa %(reads_3prime_adapt)s
-                           -i %(infile)s
-                           -basename %(track)s
-                           --noqc
-                           -clean-length 15 > %(track)s_pair_reaper.log;
-                    checkpoint;
-                    mv %(track)s.lane.clean.gz %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@active_if(PARAMS["reads_paired"]==1)
-@follows(mkdir("reconciled.dir"), reapRead2)
-@transform(demux_fastq,
-           regex(".+/(.+)_(.+).fastq.1.gz"),
-           add_inputs(r"\2.fastq.2.gz"),
-           [r"reconciled.dir/\1_\2.fastq.2.gz",
-            r"reconciled.dir/\1_\2.fastq.1.gz"])
-def reconsilePairs(infiles, outfiles):
-    ''' Pull reads read 2 file that are present in each read 1 file '''
-
-    track = P.snip(os.path.basename(infiles[0]), ".fastq.1.gz")
-    infiles = " ".join(infiles)
-    job_options = "-l mem_free=1G"time
-    statement = '''python %(scripts_dir)s/fastqs2fastqs.py
-                          --method=reconcile
-                          --id-pattern-1='(.+)_.+_[ATGC]+'
-                          --output-pattern=reconciled.dir/%(track)s.fastq.%%s.gz
-                           %(infiles)s > reconciled.dir/%(track)s.log '''
-
-    P.run()
-      
-###################################################################
 
 ###################################################################
 @follows(mkdir("fastqc"))
@@ -332,33 +283,7 @@ def qcDemuxedReads(infile, outfile):
 
 
 ###################################################################
-@transform(qcDemuxedReads, regex("(.+)/(.+)\.fastqc"),
-           inputs(r"\1/\2_fastqc/fastqc_data.txt"),
-           r"\1/\2_length_distribution.tsv")
-def getLengthDistribution(infile, outfile):
-    ''' Parse length distribution out of the fastqc results '''
-
-    statement = '''
-       sed -e '/>>Sequence Length Distribution/,/>>END_MODULE/!d' %(infile)s
-     | grep -P '^[0-9]+'
-     | sed '1istart\\tend\\tcount'
-     | sed 's/-/\\t/' > %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@merge(getLengthDistribution, "read_length_distribution.load")
-def loadLengthDistribution(infiles, outfile):
-
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename=".+/(.+)_length_distribution.tsv",
-                         options="-i start -i end")
-
-
-###################################################################
-@follows(demux_fastq,qcDemuxedReads, loadUMIStats, loadSampleInfo,
-         loadLengthDistribution)
+@follows(demux_fastq,qcDemuxedReads, loadUMIStats)
 def PrepareReads():
     pass
 
@@ -368,11 +293,11 @@ def PrepareReads():
 ###################################################################
 def mapping_files():
 
-    infiles = glob.glob("%s/*.fastq.gz" % PARAMS["input"])
+    infiles = glob.glob("demux_fq/*.fastq.gz")
 
     outfiles = ["mapping.dir/%(mapper)s.dir/%(track)s.%(mapper)s.bam"
                 % {"mapper": PARAMS["mappers"],
-                   "track": re.match("%s/(.+).fastq.gz" % PARAMS["input"], infile).groups()[0]}
+                   "track": re.match("demux_fq/(.+).fastq.gz", infile).groups()[0]}
                 for infile in infiles]
 
     yield (infiles, outfiles)
@@ -422,19 +347,12 @@ def generateContextBed(infile, outfile):
     genome = os.path.join(PARAMS["annotations_dir"], "contigs.tsv")
     statement = ''' zcat %(infile)s
                   | python %(scripts_dir)s/gtf2gtf.py
-                    --exons2introns
+                    --merge-transcripts
                     --with-utr
                      -L %(outfile)s.log
-                  | awk 'BEGIN{FS="\\t";OFS="\\t"} {$2="intron"; print}'
-                  | gzip > %(outfile)s.tmp.gtf.gz;
-
-                  checkpoint;
-
-                  zcat %(infile)s %(outfile)s.tmp.gtf.gz           
                   | python %(scripts_dir)s/gff2bed.py
                     --name=source
                      -L %(outfile)s.log
-                  | sort -k1,1 -k2,2n
                     > %(outfile)s.tmp.bed;
                     
                     checkpoint;
@@ -451,31 +369,9 @@ def generateContextBed(infile, outfile):
                   
                     checkpoint;
                   
-                    rm %(outfile)s.tmp.bed %(outfile)s.tmp2.bed %(outfile)s.tmp.gtf.gz '''
+                    rm %(outfile)s.tmp.bed %(outfile)s.tmp2.bed '''
 
     P.run()
-
-
-###################################################################
-@transform(generateContextBed, suffix(".context.bed.gz"),
-           ".context_interval_stats.tsv.gz")
-def getContextIntervalStats(infile, outfile):
-    ''' Generate length stastics on context file '''
-
-    statement = ''' python %(scripts_dir)s/bed2stats.py
-                            --per-name
-                            -I %(infile)s
-                    | gzip > %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@transform(getContextIntervalStats, suffix(".tsv.gz"),
-           ".load")
-def loadContextIntervalStats(infile, outfile):
-
-    P.load(infile, outfile)
 
 
 ###################################################################
@@ -538,78 +434,7 @@ def dedup_alignments(infile, outfile):
 
     P.run()
 
-###################################################################
-@transform(dedup_alignments,
-           suffix(".bam"), ".bam_stats.tsv")
-def dedupedBamStats(infile, outfile):
-    ''' Calculate statistics on the dedeupped bams '''
 
-    statement = '''python %(scripts_dir)s/bam2stats.py
-                         --force
-                          < %(infile)s > %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@merge(dedupedBamStats, "deduped_bam_stats.load")
-def loadDedupedBamStats(infiles, outfile):
-
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename=".+/(.+).bam_stats.tsv")
-
-
-###################################################################
-@transform(dedup_alignments,
-           suffix(".bam"),
-           ".nspliced.txt")
-def getNspliced(infile, outfile):
-    ''' Calculate the number of reads spliced by grepping the
-    cigar string for Ns'''
-
-    statement = ''' samtools view %(infile)s
-                  | awk '$6 ~ /N/'
-                  | wc -l > %(outfile)s '''
-    P.run()
-
-
-###################################################################
-@merge(getNspliced, "deduped_nspliced.load")
-def loadNspliced(infiles, outfile):
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename=".+/(.+).nspliced.txt",
-                         cat="track",
-                         has_titles=False,
-                         header="track,nspliced",)
-
-
-###################################################################
-@transform(dedup_alignments, suffix(".bam"), ".umi_stats.tsv.gz")
-def deduped_umi_stats(infile, outfile):
-    ''' calculate histograms of umi frequencies '''
-
-    statement = '''python %(project_src)s/umi_hist.py
-                           -I %(infile)s
-                           -L %(outfile)s.log
-                  | gzip > %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@merge(deduped_umi_stats, "dedup_umi_stats.load")
-def loadDedupedUMIStats(infiles, outfile):
-
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename=".+/(.+).umi_stats.tsv.gz",
-                         cat="track",
-                         options="-i track -i UMI")
-
-
-@transform(dedup_alignments, suffix(".bam"), ".length_stats.tsv.gz")
-def getAlignmentLengthStats(infile,outfile):
-
-    statement
 ###################################################################
 @follows(mkdir("saturation.dir"), run_mapping)
 @split(mergeBAMFiles, regex(".+/(.+)\.[^\.]+\.bam"),
@@ -644,25 +469,6 @@ def subsetForSaturationAnalysis(infile, outfiles):
         statements.append(statement_template % locals())
 
     P.run()
-
-
-###################################################################
-@transform(subsetForSaturationAnalysis, suffix(".bam"), ".bamstats.tsv")
-def subsetBamStats(infile, outfile):
-    ''' Stats on the subset BAMs '''
-
-    job_options = "-l mem_free=500M"
-    statement = ''' python %(scripts_dir)s/bam2stats.py 
-                    --force < %(infile)s > %(outfile)s '''
-    P.run()
-
-
-###################################################################
-@merge(subsetBamStats, "subset_bam_stats.load")
-def loadSubsetBamStats(infiles, outfile):
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename= ".+/(.+-.+-.+)\.([0-9]+\.[0-9]+).bamstats.tsv",
-                         cat="track,subset")
 
 
 ###################################################################
@@ -704,148 +510,6 @@ def loadContextStats(infiles, outfile):
 
 
 ###################################################################
-@follows(loadContextStats,
-         loadSubsetBamStats,
-         loadDedupedBamStats)
-def MappingStats():
-    pass
-
-         
-###################################################################
-# Quality control and reproducibility
-###################################################################
-@follows(mkdir("reproducibility.dir"))
-@collate(dedup_alignments, regex(".+/(.+\-.+)\-.+.bam"),
-         r"reproducibility.dir/\1-agg.reproducibility.tsv.gz")
-def calculateReproducibility(infiles, outfile):
-    ''' Calculate cross-link reproducibility as defined by 
-    Sugimoto et al, Genome Biology 2012 '''
-
-    job_options = "-l mem_free=1G"
-    infiles = " ".join(infiles)
-
-    statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
-                   %(infiles)s
-                   -L %(outfile)s.log
-                 | gzip > %(outfile)s '''
-    P.run()
-
-
-###################################################################
-@follows(mkdir("reproducibility.dir"))
-@merge(dedup_alignments,
-       r"reproducibility.dir/agg-agg-agg.reproducibility.tsv.gz")
-def reproducibilityAll(infiles, outfile):
-    ''' Test weather sites from one file reproduce in other of different factors '''
-
-    job_options = "-l mem_free=10G"
-    infiles = " ".join(infiles)
-
-    statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
-                   %(infiles)s
-                   -L %(outfile)s.log
-                 | gzip > %(outfile)s '''
-    P.run()
-
-
-###################################################################
-@follows(mkdir("reproducibility.dir"))
-@transform(dedup_alignments,
-           regex(".+/(.+).bam"),
-           add_inputs("deduped.dir/%s*.bam" % PARAMS["experiment_input"]),
-           r"reproducibility.dir/\1_vs_control.reproducibility.tsv.gz")
-def reproducibilityVsControl(infiles, outfile):
-    '''Test what fraction of the locations in each bam also appear
-    in the control files'''
-
-    track = infiles[0]
-    if track in infiles[1:]:
-        P.touch(outfile)
-    else:
-        job_options = "-l mem_free=1G"
-
-        infiles = " ".join(infiles)
-
-        statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
-                   %(infiles)s
-                   -L %(outfile)s.log
-                   -t %(track)s
-                 | gzip > %(outfile)s '''
-        P.run()
-
-
-###################################################################
-@merge(calculateReproducibility,
-       r"reproducibility.dir/experiment_reproducibility.load")
-def loadReproducibility(infiles, outfile):
-
-    P.concatenateAndLoad(infiles, outfile, cat="Experiment",
-                         regex_filename=".+/(.+)-agg.reproducibility.tsv.gz",
-                         options="-i Track -i fold -i level")
-
-
-###################################################################
-@transform(reproducibilityAll, regex("(.+)"),
-           "reproducibility.dir/all_reproducibility.load")
-def loadReproducibilityAll(infile, outfile):
-    P.load(infile, outfile, "-i Track -i fold -i level")
-
-
-###################################################################
-@merge(reproducibilityVsControl,
-       "reproducibility.dir/reproducibility_vs_control.load")
-def loadReproducibilityVsControl(infiles, outfile):
-
-    infiles = [infile for infile in infiles 
-               if not PARAMS["experiment_input"] in infile]
-
-    P.concatenateAndLoad(infiles, outfile, cat="Experiment",
-                         regex_filename=".+/(.+\-.+)\-.+_vs_control.reproducibility.tsv.gz",
-                         options = "-i File -i fold -i level")
-
-
-###################################################################
-@permutations(dedup_alignments, formatter(".+/(?P<TRACK>.+).bam"),
-              2,
-              "reproducibility.dir/{TRACK[0][0]}_vs_{TRACK[1][0]}.tsv.gz")
-def computeDistances(infiles, outfile):
-    ''' Compute the reproduciblity between each indevidual pair of samples
-    this can then be readily converted to a distance measure'''
-
-    track = infiles[0]
-    infiles = " ".join(infiles)
-
-    job_options="-l mem_free=2G"
-
-    statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
-                   %(infiles)s
-                   -L %(outfile)s.log
-                   -t %(track)s
-                   -m 1
-                 | gzip > %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@merge(computeDistances,
-       "reproducibility.dir/reproducibility_distance.load")
-def loadDistances(infiles, outfile):
-
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename=".+/(.+)_vs_(.+).tsv.gz",
-                         cat="File1,File2",
-                         options="-i Track, -i File2")
-
-
-###################################################################
-@follows(loadReproducibility,
-         loadReproducibilityAll,
-         loadReproducibilityVsControl,
-         loadDistances)
-def reproducibility():
-    pass
-###################################################################
 # Analysis
 ###################################################################
 @follows(mkdir("gene_profiles.dir"))
@@ -864,7 +528,6 @@ def calculateGeneProfiles(infiles, outfile):
                            --normalization=total-sum
                            --normalize-profile=area
                            --log=%(outfile)s.log
-                           --output-filename-pattern=%(outfile)s.%%s
                            > %(outfile)s '''
 
     P.run()
@@ -882,9 +545,8 @@ def transcripts2Exons(infile, outfile):
                           --is-gtf 
                            -I %(infile)s 
                            -L %(outfile)s.log
-                  | mergeBed -s -d 100 -nms
-                  | awk 'BEGIN{OFS="\\t"} {$4=NR; print}'
-                  | python %(scripts_dir)s/bed2gff.py --as-gtf -L %(outfile)s.log
+                  | awk 'BEGIN{OFS='\\t'} {$4=NR; print}'
+                  | python %(scripts_dir)s/bed2gff.py --is-gtf -L %(outfile)s.log
                   | gzip -c > %(outfile)s '''
     P.run()
 
@@ -896,83 +558,43 @@ def transcripts2Exons(infile, outfile):
 def transcripts2Introns(infile, outfile):
     ''' Make each exon a seperate gene to allow quantitaion over exons'''
 
-    statement = '''python %(scripts_dir)s/gtf2gtf.py
-                           -I %(infile)s
-                          --log=%(outfile)s.log
-                           --exons2introns
-                  | python %(scripts_dir)s/gff2bed.py
-                          --is-gtf
+
+    statement = '''python %(scripts_dir)s/gff2bed.py 
+                          --is-gtf 
+                           -I %(infile)s 
                            -L %(outfile)s.log
-                  | mergeBed -s -d 100 -nms
-                  | awk 'BEGIN{OFS="\\t"} {$4=NR; print}'
-                  | python %(scripts_dir)s/bed2gff.py
-                          --as-gtf -L %(outfile)s.log
+                  | awk 'BEGIN{OFS='\\t'} {$4=NR; print}'
+                  | python %(scripts_dir)s/bed2gff.py --is-gtf -L %(outfile)s.log
                   | gzip -c > %(outfile)s '''
     P.run()
 
 
 ###################################################################
-@product(dedup_alignments,
-         formatter(".+/(?P<TRACK>.+).bam"),
-         [transcripts2Exons, transcripts2Introns],
-         formatter(".+/refcoding.(?P<INTERVALTYPE>.+).gtf.gz"),
-         "gene_profiles.dir/{TRACK[0][0]}.{INTERVALTYPE[1][0]}.log")
+@product(dedup_alignments, 
+         formatter(".+/(?P<TRACK>).bam"),
+         [transcripts2Exons, transcripts2Introns], 
+         formatter(".+/refcoding.(?<INTERVALTYPE>.+).gtf.gz"),
+         "gene_profiles.dir/{TRACK}[0][0].INTERVALTYPE[1][0].log")
 def calculateExonProfiles(infiles, outfile):
 
     infile, reffile = infiles
 
-    outfile = P.snip(outfile, ".log")
     statement = '''python %(scriptsdir)s/bam2geneprofile.py
                           --method=intervalprofile
                           --bamfile=%(infile)s
                           --gtffile=%(reffile)s
                           --normalization=total-sum
-                          --base-accuracy
                           --normalize-profile=area
-                          --resolution-upstream=50
-                          --resolution-downstream=50
-                          --extension-upstream=50
-                          --extension-downstream=50
-                          --output-filename-pattern=%(outfile)s.%%s
                           --log=%(outfile)s.log '''
 
     P.run()
-
-
-###################################################################
-@product(dedup_alignments,
-         formatter(".+/(?P<TRACK>.+).bam"),
-         [transcripts2Exons, transcripts2Introns],
-         formatter(".+/refcoding.(?P<INTERVALTYPE>.+).gtf.gz"),
-         "gene_profiles.dir/{TRACK[0][0]}.{INTERVALTYPE[1][0]}.tssprofile.log")
-def calculateExonTSSProfiles(infiles, outfile):
-
-    infile, reffile = infiles
-
-    outfile = P.snip(outfile, ".tssprofile.log")
-    statement = '''python %(scriptsdir)s/bam2geneprofile.py
-                          --method=tssprofile
-                          --bamfile=%(infile)s
-                          --gtffile=%(reffile)s
-                          --normalization=total-sum
-                          --base-accuracy
-                          --normalize-profile=area
-                          --resolution-upstream=100
-                          --resolution-downstream=100
-                          --extension-upstream=100
-                          --extension-downstream=100
-                          --output-filename-pattern=%(outfile)s.%%s
-                          --log=%(outfile)s.tssprofile.log '''
-
-    P.run()
-
 
 ###################################################################
 ###################################################################
 ###################################################################
 ## primary targets
 ###################################################################
-@follows(PrepareReads, mapping,MappingStats, reproducibility)
+@follows(PrepareReads, mapping)
 def full(): 
     pass
 

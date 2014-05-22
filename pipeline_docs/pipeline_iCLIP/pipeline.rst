@@ -9,8 +9,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
-   pipeline/Methods.rst
-   pipeline/Dummy.rst
+   pipeline/Sample_QC.rst
   
 Indices and tables
 ==================

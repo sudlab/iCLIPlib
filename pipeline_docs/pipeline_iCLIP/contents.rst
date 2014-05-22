@@ -8,6 +8,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   analysis.rst
    pipeline.rst
 
 Errors and Warnings
