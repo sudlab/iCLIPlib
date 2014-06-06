@@ -8,7 +8,7 @@ Profiles over whole gene models
    :render: gallery-plot
    :glob: gene_profiles.dir/*.detail.png
    :layout: column-3
-   :no-cache:
+
 
    Gene Profiles
 
@@ -32,3 +32,23 @@ Profiles over introns
    :layout: column-3
 
    Profiles over introns
+
+
+Profiles over exon starts
+-----------------------
+
+.. report:: Profiles.ExonStartProfiles
+   :render: gallery-plot
+   :layout: column-3
+
+   Profiles over the start of Exons
+
+
+Profiles over exon ends
+-----------------------
+
+.. report:: Profiles.ExonEndProfiles
+   :render: gallery-plot
+   :layout: column-3
+
+   Profiles over the end of Exons

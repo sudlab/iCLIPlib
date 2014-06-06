@@ -21,12 +21,23 @@ Contents
 
    analysis/mapping.rst
    analysis/saturation.rst
+   analysis/FragmentSizes.rst
    analysis/context.rst
    analysis/reproducibility.rst
-
+   analysis/profiles.rst
 
 Executive Summaries
 -------------------
+
+27/5/2014 - Fragment Size analysis
++++++++++++++++++++++++++++++++++++
+
+*  There are far more smaller fragments than there are larger fragments
+*  There are a substainial number of fragments that are smaller than the smallest size expected
+*  A larger percentage of these smallest fragments are unique (i.e. not PCR duplicates), make this unlikely to be an amplication bias
+*  Perhaps it is to do with binding sites being bias to one end of the transcript?
+*  Full details at :ref:`fragsizeanal`
+
 
 14/5/2014 - Pilot Experiment Assessment
 +++++++++++++++++++++++++++++++++++++++

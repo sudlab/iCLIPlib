@@ -2,6 +2,7 @@ from SphinxReport.Tracker import *
 from ProjectTracker import *
 import numpy as np
 import scipy as sp
+from collections import OrderedDict
 
 class ContextStats(TrackerSQL):
 
@@ -436,7 +437,7 @@ class ReproducibilityReplicateVsControl(Reproducibility):
         statement = ''' SELECT rep.Track as sample, 
                                rep.level as depth,
                                (rep.hits + 0.0)/controls.hits as ratio
-                        FROM reproducibility as rep
+                        FROM experiment_reproducibility as rep
                          INNER JOIN reproducibility_vs_control as controls
                           ON controls.Track = rep.Track AND 
                              controls.level = rep.level
@@ -502,31 +503,33 @@ class DedupedUMIStats(TrackerSQL):
         return results
 
 
-class ReadLengths(ProjectTracker):
+class FragLengths(ProjectTracker):
 
     def getTracks(self):
-        return self.getValues(
-            "SELECT DISTINCT track FROM read_length_distribution")
+        result= self.getValues(
+            "SELECT DISTINCT track FROM %(table)s")
+        result = [x.split(".")[0] for x in result]
+        return result
 
     def __call__(self, track):
 
-        statement = '''SELECT start, count
-                       FROM read_length_distribution
-                       WHERE track = '%(track)s' '''
+        statement = '''SELECT length, count
+                       FROM %(table)s
+                       WHERE track LIKE '%(track)s%%' '''
 
         results = self.getAll(statement)
 
         bins = map(int, PARAMS["experiment_length_bins"].split(","))
 
-        bins = [bin for bin in bins if bin < max(results["start"])]
+        bins = [bin for bin in bins if bin < max(results["Length"])]
 
-        return_vals = {}
-        return_vals["<%i" % bins[0]] = sum([count for start, count in
+        return_vals = OrderedDict()
+        return_vals["0-%i" % bins[0]] = sum([count for start, count in
                                             zip(*results.itervalues()) if
                                            start < bins[0]])
 
         for i in range(len(bins)-1):
-            name = "%i-%i" % (bins[i], bins[i+1])
+            name = "%i-%i" % (bins[i],bins[i+1])
             return_vals[name] = sum ([count for start, count in
                                       zip(*results.itervalues()) if
                                       start >= bins[i] and
@@ -539,3 +542,35 @@ class ReadLengths(ProjectTracker):
                                              start >= bins[-1]])
 
         return return_vals
+
+
+class MappedFragLength(FragLengths):
+
+    table = "mapping_frag_lengths"
+
+
+class DedupedFragLengths(FragLengths):
+
+    table = "deduped_frag_lengths"
+
+
+class LengthDedupedRatios(MappedFragLength,DedupedFragLengths):
+
+    table = "deduped_frag_lengths"
+
+    def __call__(self, track):
+
+        mapped = MappedFragLength()
+        mapped = mapped(track)
+        deduped = DedupedFragLengths()
+        deduped = deduped(track)
+
+        results = OrderedDict()
+
+        for category in mapped:
+            
+            results[category] = (float(deduped[category]) /
+                                 float(mapped[category]))
+
+        return results
+

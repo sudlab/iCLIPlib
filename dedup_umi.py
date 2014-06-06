@@ -59,14 +59,14 @@ import sys
 import pysam
 import CGAT.Experiment as E
 import random
-
+import collections
 
 def dedup(insam, outsam, ignore_umi, subset):
 
     last_pos = 0
     last_chr = ""
-    reads_dict = {}
-    read_counts = {}
+    reads_dict = collections.defaultdict(dict)
+    read_counts = collections.defaultdict(dict)
     
     for read in insam.fetch():
 
@@ -77,13 +77,29 @@ def dedup(insam, outsam, ignore_umi, subset):
         if read.is_unmapped:
             continue
 
+        if read.mate_is_unmapped:
+            continue
+
+        if read.is_read2:
+            continue
+
+        if read.is_reverse:
+            pos = read.aend
+        else:
+            pos = read.pos
+            
         if not read.pos == last_pos or not read.tid == last_chr:
 
-            for x in reads_dict.itervalues():
-                outsam.write(x)
+            out_keys = [x for x in reads_dict.keys() if x < read.pos]
+            
+            for p in out_keys:
+                for x in reads_dict[p].itervalues():
+                    outsam.write(x)
+                del reads_dict[p]
+                del read_counts[p]
 
-            reads_dict = {}
-            read_counts = {}
+
+            
             last_pos = read.pos
             last_chr = read.tid
 
@@ -93,33 +109,33 @@ def dedup(insam, outsam, ignore_umi, subset):
             umi = read.qname.split("_")[-1]
 
         if 'N' in read.cigarstring:
-            key = umi+"T"
+            key = umi+"T"+str(read.is_reverse)+str(read.tlen)
         else:
-            key = umi+"F"
+            key = umi+"F"+str(read.is_reverse)+str(read.tlen)
 
         try:
-            if reads_dict[key].mapq > read.mapq:
+            if reads_dict[pos][key].mapq > read.mapq:
                 continue
         except KeyError:
-            reads_dict[key] = read
-            read_counts[key] = 0
+            reads_dict[pos][key] = read
+            read_counts[pos][key] = 0
         else:
-            if reads_dict[key].mapq < read.mapq:
-                reads_dict[key] = read
-                read_counts[key] = 0
+            if reads_dict[pos][key].mapq < read.mapq:
+                reads_dict[pos][key] = read
+                read_counts[pos][key] = 0
                 continue
 
-            if reads_dict[key].opt("NH") < read.opt("NH"):
+            if reads_dict[pos][key].opt("NH") < read.opt("NH"):
                 continue
-            elif reads_dict[key].opt("NH") > read.opt("NH"):
-                reads_dict[key] = read
-                read_counts[key] = 0
+            elif reads_dict[pos][key].opt("NH") > read.opt("NH"):
+                reads_dict[pos][key] = read
+                read_counts[pos][key] = 0
 
-            read_counts[key] += 1
-            prob = 1.0/read_counts[key]
+            read_counts[pos][key] += 1
+            prob = 1.0/read_counts[pos][key]
 
             if random.random() < prob:
-                reads_dict[key] = read
+                reads_dict[pos][key] = read
 
      
 def main(argv=None):

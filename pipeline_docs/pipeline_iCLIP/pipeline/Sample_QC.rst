@@ -63,6 +63,8 @@ Reads Per Sample
    Read length distribution of unmapped reads
 
 
+
+
 Saturation Analysis
 --------------------
 
@@ -112,11 +114,8 @@ Saturation Analysis
 Context Stats
 ---------------
 
-
-
 .. report:: Sample_QC.ContextStats
    :render: pie-plot
-   :groupby: track
    :layout: column-4
 
    Mapping Contexts for deduped reads

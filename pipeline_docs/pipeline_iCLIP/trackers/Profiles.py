@@ -61,3 +61,12 @@ class IntronProfiles(TrackerImagesPlus):
     pattern = "./(.+\-.+)\-(.+).introns.intervalprofile.detail.png"
 
 
+class ExonStartProfiles(TrackerImagesPlus):
+    glob = "gene_profiles.dir/*exons.tssprofile.png"
+    pattern = "./(.+\-.+)\-(.+).exons.tssprofile.png"
+
+
+class ExonEndProfiles(TrackerImagesPlus):
+    glob = "gene_profiles.dir/*introns.tssprofile.png"
+    pattern = "./(.+\-.+)\-(.+).introns.tssprofile.png"
+

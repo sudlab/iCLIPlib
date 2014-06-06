@@ -111,7 +111,7 @@ import CGAT.IOTools as IOTools
 import CGAT.Database as Database
 import CGATPipelines.PipelineUtilities as PUtils
 import CGATPipelines.PipelineMapping as PipelineMapping
-
+import PipelineiCLIP
 ###################################################
 ###################################################
 ###################################################
@@ -307,7 +307,7 @@ def reconsilePairs(infiles, outfiles):
 
     track = P.snip(os.path.basename(infiles[0]), ".fastq.1.gz")
     infiles = " ".join(infiles)
-    job_options = "-l mem_free=1G"time
+    job_options = "-l mem_free=1G"
     statement = '''python %(scripts_dir)s/fastqs2fastqs.py
                           --method=reconcile
                           --id-pattern-1='(.+)_.+_[ATGC]+'
@@ -368,11 +368,11 @@ def PrepareReads():
 ###################################################################
 def mapping_files():
 
-    infiles = glob.glob("%s/*.fastq.gz" % PARAMS["input"])
+    infiles = glob.glob("%s/*.fastq.1.gz" % PARAMS["input"])
 
     outfiles = ["mapping.dir/%(mapper)s.dir/%(track)s.%(mapper)s.bam"
                 % {"mapper": PARAMS["mappers"],
-                   "track": re.match("%s/(.+).fastq.gz" % PARAMS["input"], infile).groups()[0]}
+                   "track": re.match("%s/(.+).fastq.1.gz" % PARAMS["input"], infile).groups()[0]}
                 for infile in infiles]
 
     yield (infiles, outfiles)
@@ -511,9 +511,10 @@ def mergeBAMFiles(infiles, outfile):
                     samtools index %(outfile)s '''
 
     P.run()
-    
+
+
 ###################################################################
-@follows(mapping_qc)
+@follows(mapping_qc,loadContextIntervalStats )
 def mapping():
     pass
 
@@ -527,16 +528,55 @@ def mapping():
 def dedup_alignments(infile, outfile):
     ''' Deduplicate reads, taking UMIs into account'''
 
+    outfile = P.snip(outfile, ".bam")
+
     statement = ''' python %(project_src)s/dedup_umi.py
                     -I %(infile)s
-                    -S %(outfile)s
+                    -S %(outfile)s.tmp.bam
                     -L %(outfile)s.log;
  
                     checkpoint;
 
-                    samtools index %(outfile)s '''
+                    samtools sort %(outfile)s.tmp.bam %(outfile)s;
+                   
+                    checkpoint;
+
+                    samtools index %(outfile)s.bam ;
+ 
+                    checkpoint;
+
+                    rm %(outfile)s.tmp.bam'''
 
     P.run()
+
+
+###################################################################
+@transform([dedup_alignments,mergeBAMFiles], suffix(".bam"),
+           ".frag_length.tsv")
+def getFragLengths(infile, outfile):
+    ''' estimate fragment length distribution from read lengths'''
+
+    statement = ''' python %(project_src)s/length_stats.py
+                           -I %(infile)s
+                           -S %(outfile)s
+                           -L %(outfile)s.log
+               '''
+    if PARAMS["reads_paired"] == 1:
+        statement += "--paired=%s" % (
+            int(PARAMS["reads_length"]) - len(PARAMS["reads_bc_pattern"]))
+    P.run()
+
+
+###################################################################
+@collate(getFragLengths,
+         regex("(mapping|deduped).dir/.+\.frag_length.tsv"),
+         r"\1.frag_lengths.load")
+def loadFragLengths(infiles, outfile):
+
+    P.concatenateAndLoad(infiles, outfile,
+                         regex_filename=".+/(.+\-.+\-.+).frag_length.tsv",
+                         options=" -i Length")
+
 
 ###################################################################
 @transform(dedup_alignments,
@@ -606,10 +646,6 @@ def loadDedupedUMIStats(infiles, outfile):
                          options="-i track -i UMI")
 
 
-@transform(dedup_alignments, suffix(".bam"), ".length_stats.tsv.gz")
-def getAlignmentLengthStats(infile,outfile):
-
-    statement
 ###################################################################
 @follows(mkdir("saturation.dir"), run_mapping)
 @split(mergeBAMFiles, regex(".+/(.+)\.[^\.]+\.bam"),
@@ -629,18 +665,20 @@ def subsetForSaturationAnalysis(infile, outfiles):
                             python %%(project_src)s/dedup_umi.py
                               -I %(infile)s
                               -L %(outfile)s.log
-                              -S %(outfile)s
+                              -S %(outfile)s.tmp.bam
                               --subset=%(subset).3f;
                              checkpoint;
-                             samtools index %(outfile)s '''
+                             samtools sort %(outfile)s.tmp.bam %(outfile)s;
+                             checkpoint;
+                             samtools index %(outfile)s.bam '''
     for x in range(1, 6):
         subset = 1.0/(2 ** x)
-        outfile = "saturation.dir/%%(track)s.%.3f.bam" % subset
+        outfile = "saturation.dir/%%(track)s.%.3f" % subset
         statements.append(statement_template % locals())
 
     for x in range(6, 11):
         subset = x/10.0
-        outfile = "saturation.dir/%%(track)s.%.3f.bam" % subset
+        outfile = "saturation.dir/%%(track)s.%.3f" % subset
         statements.append(statement_template % locals())
 
     P.run()
@@ -706,7 +744,10 @@ def loadContextStats(infiles, outfile):
 ###################################################################
 @follows(loadContextStats,
          loadSubsetBamStats,
-         loadDedupedBamStats)
+         loadDedupedBamStats,
+         loadFragLengths,
+         loadNspliced,
+         loadDedupedUMIStats)
 def MappingStats():
     pass
 
@@ -875,18 +916,25 @@ def calculateGeneProfiles(infiles, outfile):
            suffix(".gtf.gz"),
            ".exons.gtf.gz")
 def transcripts2Exons(infile, outfile):
-    ''' Make each exon a seperate gene to allow quantitaion over exons'''
-
+    ''' Make each exon a seperate gene to allow quantitaion over exons
+    only keeps those exons longer than 100 base pairs'''
+    
+    tmp_outfile = P.snip(outfile, ".gtf.gz") + ".tmp.gtf.gz"
+    PipelineiCLIP.removeFirstAndLastExon(infile, tmp_outfile)
 
     statement = '''python %(scripts_dir)s/gff2bed.py 
                           --is-gtf 
-                           -I %(infile)s 
+                           -I %(tmp_outfile)s 
                            -L %(outfile)s.log
+                  | sort -k1,1 -k2,2n
                   | mergeBed -s -d 100 -nms
+                  | awk '($3-$2) > 100 {print}'
                   | awk 'BEGIN{OFS="\\t"} {$4=NR; print}'
                   | python %(scripts_dir)s/bed2gff.py --as-gtf -L %(outfile)s.log
                   | gzip -c > %(outfile)s '''
     P.run()
+
+    os.unlink(tmp_outfile)
 
 
 ###################################################################
@@ -896,13 +944,17 @@ def transcripts2Exons(infile, outfile):
 def transcripts2Introns(infile, outfile):
     ''' Make each exon a seperate gene to allow quantitaion over exons'''
 
+    tmp_outfile = P.snip(outfile, ".gtf.gz") + ".tmp.gtf.gz"
+    PipelineiCLIP.removeFirstAndLastExon(infile, tmp_outfile)
+
     statement = '''python %(scripts_dir)s/gtf2gtf.py
-                           -I %(infile)s
+                           -I %(tmp_outfile)s
                           --log=%(outfile)s.log
                            --exons2introns
                   | python %(scripts_dir)s/gff2bed.py
                           --is-gtf
                            -L %(outfile)s.log
+                  | sort -k1,1 -k2,2n
                   | mergeBed -s -d 100 -nms
                   | awk 'BEGIN{OFS="\\t"} {$4=NR; print}'
                   | python %(scripts_dir)s/bed2gff.py
@@ -910,6 +962,7 @@ def transcripts2Introns(infile, outfile):
                   | gzip -c > %(outfile)s '''
     P.run()
 
+    os.unlink(tmp_outfile)
 
 ###################################################################
 @product(dedup_alignments,
@@ -959,8 +1012,8 @@ def calculateExonTSSProfiles(infiles, outfile):
                           --normalize-profile=area
                           --resolution-upstream=100
                           --resolution-downstream=100
-                          --extension-upstream=100
-                          --extension-downstream=100
+                          --extension-inward=100
+                          --extension-outward=100
                           --output-filename-pattern=%(outfile)s.%%s
                           --log=%(outfile)s.tssprofile.log '''
 
@@ -968,28 +1021,32 @@ def calculateExonTSSProfiles(infiles, outfile):
 
 
 ###################################################################
-###################################################################
-###################################################################
-## primary targets
-###################################################################
-@follows(PrepareReads, mapping,MappingStats, reproducibility)
-def full(): 
+@follows(calculateExonTSSProfiles,
+         calculateGeneProfiles,
+         calculateExonProfiles)
+def profiles():
     pass
 
+
 ###################################################################
 ###################################################################
 ###################################################################
 ## primary targets
 ###################################################################
+@follows(PrepareReads, mapping, MappingStats, reproducibility,
+         profiles)
+def full():
+    pass
 
-@follows( mkdir( "report" ), createViewMapping )
+
+@follows( mkdir( "report" ), createViewMapping)
 def build_report():
     '''build report from scratch.'''
 
     try:
         os.symlink(os.path.abspath("conf.py"),
-                        os.path.join(
-                            os.path.abspath("mapping.dir"), "conf.py"))
+                   os.path.join(
+                       os.path.abspath("mapping.dir"), "conf.py"))
     except OSError as e:
         E.warning(str(e))
 

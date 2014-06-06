@@ -10,6 +10,9 @@ Contents:
    :maxdepth: 2
 
    pipeline/Sample_QC.rst
+   pipeline/FragmentSizes.rst
+   pipeline/Profiles.rst
+
   
 Indices and tables
 ==================

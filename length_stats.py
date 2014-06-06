@@ -56,6 +56,9 @@ def main(argv=None):
 
     parser.add_option("-l","--length", dest = "length", type="int",
                       help="max read length", default = 100)
+    parser.add_option("-p", "--paired", dest="paired", type = "int",
+                     help="Data is paired. Use fragment length where aligned"
+                          "length is greater than or equal to this length", default=None)
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
 
@@ -72,16 +75,27 @@ def main(argv=None):
     nlonger=0
     for read in in_bam.fetch():
 
+        if read.is_read2 or read.is_unmapped or read.mate_is_unmapped:
+            continue
+
         nreads+=1
-        if read.inferred_length > read.alen:
+        length = read.inferred_length - sum([l for o,l in read.cigar if o=="S"])
+        if read.inferred_length > length:
             nlonger+=1
-        if read.inferred_length >= options.length:
-            out_hist[options.length] += 1
+
+        if not (options.paired is None) and length >= options.paired:
+
+            splice_1 = max(0, read.alen-length)
+            
+            out_hist[abs(read.tlen) - splice_1] += 1
         else:
-            out_hist[read.inferred_length] += 1
+            out_hist[length] += 1
 
     header = ["Length", "Count"]
-    outlines = ["\t".join(map(str, x)) for x in out_hist.iteritems()]
+
+    keys = sorted(out_hist.keys())
+
+    outlines = ["\t".join(map(str, (key,out_hist[key]))) for key in keys]
     outlines = "\t".join(header) + "\n" + "\n".join(outlines) + "\n"
     options.stdout.write(outlines)
 
