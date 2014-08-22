@@ -911,6 +911,18 @@ def calculateGeneProfiles(infiles, outfile):
     P.run()
 
 
+@merge(calculateGeneProfiles,
+       "gene_profiles.load")
+def loadGeneProfiles(infiles, outfile):
+
+    infiles = [infile + ".geneprofilewithintrons.matrix.tsv.gz"
+               for infile in infiles]
+
+    P.concatenateAndLoad(infiles, outfile,
+                          regex_filename='.+/(.+)\-(.+)\-(.+).tsv.geneprofilewithintrons.matrix.tsv.gz',
+                          cat = "factor,condition,rep",
+                          options = "-i factor -i condition -i rep")
+
 ###################################################################
 @transform("mapping.dir/geneset.dir/refcoding.gtf.gz",
            suffix(".gtf.gz"),
@@ -991,7 +1003,17 @@ def calculateExonProfiles(infiles, outfile):
 
     P.run()
 
+@merge(calculateExonProfiles,
+       "exon_profiles.load")
+def loadExonProfiles(infiles, outfile):
 
+    infiles = [P.snip(infile,".log") + ".intervalprofile.matrix.tsv.gz"
+               for infile in infiles]
+
+    P.concatenateAndLoad(infiles, outfile,
+                          regex_filename='.+/(.+)\-(.+)\-(.+).(exons|introns).intervalprofile.matrix.tsv.gz',
+                          cat = "factor,condition,rep,interval",
+                          options = "-i factor -i condition -i rep")
 ###################################################################
 @product(dedup_alignments,
          formatter(".+/(?P<TRACK>.+).bam"),
@@ -1025,6 +1047,111 @@ def calculateExonTSSProfiles(infiles, outfile):
          calculateGeneProfiles,
          calculateExonProfiles)
 def profiles():
+    pass
+
+###################################################################
+# Calling significant clusters
+###################################################################
+@follows(mkdir("clusters.dir"))
+@transform(dedup_alignments,
+           regex(".+/(.+).bam"),
+           add_inputs("mapping.dir/geneset.dir/reference.gtf.gz"),
+           r"clusters.dir/\1.bg.gz")
+def callSignificantClusters(infiles,outfile):
+    '''Call bases as significant based on mapping depth in window
+    around base'''
+
+    bam, gtf = infiles
+    options = "--window-size=%s" % PARAMS["clusters_window_size"]
+    if PARAMS["clusters_fdr"]:
+        options += " --fdr"
+    if PARAMS["clusters_grouping"]:
+        options += " --grouping=%s" % PARAMS["clusters_grouping"]
+
+    statement = '''python %(scriptsdir)s/gtf2gtf.py 
+                          --filter=longest-gene
+                          --sort=gene+transcript
+                          --merge-exons
+                           -I %(gtf)s
+                           -L %(outfile)s.log
+                 | python %(project_src)s/find_significant_bases.py
+                   %(bam)s
+                   %(options)s
+                  -L %(outfile)s.log
+                | gzip -c > %(outfile)s '''
+
+    P.run()
+
+@follows(callSignificantClusters)
+def clusters():
+    pass
+
+###################################################################
+# Data Export
+###################################################################
+@follows(mkdir("bigWig"))
+@subdivide(dedup_alignments, regex(".+/(.+).bam"),
+          [r"bigWig/\1_plus.bw",
+           r"bigWig/\1_minus.bw"])
+def generateBigWigs(infile, outfiles):
+    '''Generate plus and minus strand bigWigs from BAM files '''
+
+    out_pattern = P.snip(outfiles[0], "_plus.bw")
+    statement = '''python %(project_src)s/iCLIP2bigWig.py
+                          -I %(infile)s
+                          -L %(out_pattern)s.log
+                          %(out_pattern)s '''
+
+    P.run()
+
+###################################################################
+@follows(mkdir("export/bigWig"))
+@transform(generateBigWigs,
+           regex("bigWig/(.+)"),
+           r"export/bigWig/\1")
+def linkBigWig(infile, outfile):
+    '''Link bigwig files to export directory'''
+    
+    try:
+        os.symlink(os.path.abspath(infile), os.path.abspath(outfile))
+    except OSError:
+        os.unlink(outfile)
+        os.symlink(os.path.abspath(infile), os.path.abspath(outfile))
+
+
+###################################################################
+@merge(linkBigWig, "export/bigWig/UCSC.txt")
+def generateBigWigUCSCFile(infiles, outfile):
+    '''Generate track configuration for exporting wig files '''
+
+    project_id = P.getProjectId()
+    prefix = PARAMS['report_prefix']
+
+    template='''track type=bigWig name="%(name)s %(strand)s strand" description=" " visibility=Full bigDataUrl=https://www.cgat.org/downloads/%(project_id)s/%(prefix)s%(infile)s gridDefault=on maxHeightPixels=16:16:32 alwaysZero=on '''
+
+    outlines = []
+    
+    infile_parser = re.compile(".+/(.+)-(.+)-(.+)_(.+).bw")
+
+    infiles = sorted(infiles,
+                     key=lambda x: infile_parser.match(x).groups()[3],
+                     reverse=True)
+    infiles = sorted(infiles,
+                     key=lambda x: infile_parser.match(x).groups()[:-1])
+
+    for infile in infiles:
+        tissue, condition, replicate, strand= infile_parser.match(infile).groups()
+        name = "-".join((tissue, condition, replicate))
+        outlines.append(template % locals())
+
+    outlines = "\n".join(outlines)
+    with IOTools.openFile(outfile, "w") as outf:
+        outf.write(outlines + "\n")
+
+
+###################################################################
+@follows(generateBigWigUCSCFile)
+def export():
     pass
 
 
