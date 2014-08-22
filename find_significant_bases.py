@@ -110,6 +110,7 @@ Command line options
 
 from scipy.stats import binom
 import pandas as pd
+import numpy as np
 import sys
 import CGAT.Experiment as E
 import iCLIP
@@ -191,27 +192,28 @@ def calculateProbabilities(counts, window_size, length, start=0):
    
     single_base_ps = 1 - binom.cdf(counts-2, total_counts, 1.0/length)
 
-    window_ps = pd.Series(dtype="float_")
-    for base in counts.index.values:
+    heights = np.zeros(len(counts))
 
-        window_start = max(0, base-window_size)
-        window_end = min(start+length, base + window_size)
+    window_start = np.maximum(0, counts.index.values-window_size)
+    window_end = np.minimum(start+length, counts.index.values + window_size)
+    
+    ps = (window_end - window_start + 0.0) / length
+    ps = ps.astype("float64")
+
+    for i,base in enumerate(counts.index.values):
+
         try:
-            window = counts.index.slice_indexer(start=float(window_start),
-                                                end=float(window_end),
-                                                step=1)
+            window = counts[window_start[i]:window_end[i]]
         except KeyError:
             print (window_start,window_end)
             print counts
   
-        height = counts.iloc[window].sum() - counts[base]
+        heights[i] = window.sum()
 
-        
-        p = (window_end - window_start) / length
-        E.debug((window_start,window_end))
-        window_ps[base] = (1 - binom.cdf(height - 1, total_counts, p))
-        E.debug("Heigh %i, total_counts %i, p %f" % (height, total_counts, p))
-        E.debug("window p is %f" % window_ps[base])
+    
+    heights = heights - counts.values
+       
+    window_ps = pd.Series(1 - binom.cdf(heights - 1, total_counts, ps), index = counts.index)
 
     return single_base_ps * window_ps
 
