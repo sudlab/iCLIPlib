@@ -4,7 +4,7 @@ import CGAT.Experiment as E
 import numpy as np
 import pandas as pd
 import CGAT.GTF as GTF
-
+import collections
 
 def find_first_deletion(cigar):
     '''Find the position of the the first deletion in a 
@@ -262,8 +262,8 @@ def countChr(reads, chr_len, dtype = 'uint16'):
     strand arrays and also a counter object that contains the counts for each
     type of site. '''
 
-    pos_depths = pd.Series(dtype=dtype)
-    neg_depths = pd.Series(dtype=dtype)
+    pos_depths = collections.defaultdict(int)
+    neg_depths = collections.defaultdict(int)
 
     counter = E.Counter()
 
@@ -273,15 +273,13 @@ def countChr(reads, chr_len, dtype = 'uint16'):
         counter[cat] += 1
 
         if read.is_reverse:
-            series = neg_depths
+            neg_depths[pos] += 1
         else:
-            series = pos_depths
+            pos_depths[pos] += 1
 
-        try:
-            series.loc[pos] += 1
-        except KeyError:
-            series.loc[pos] = 1
-        
+    pos_depths = pd.Series(pos_depths, dtype=dtype)
+    neg_depths = pd.Series(neg_depths, dtype=dtype)
+
     # check for integer overflow: counter sum should add up to array sum
     counter_sum = sum([y for x, y in counter.iteritems()])
     array_sum = pos_depths.sum() + neg_depths.sum()
