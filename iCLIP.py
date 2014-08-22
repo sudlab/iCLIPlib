@@ -265,17 +265,17 @@ def countChr(reads, chr_len, dtype = 'uint16'):
     pos_depths = collections.defaultdict(int)
     neg_depths = collections.defaultdict(int)
 
-    counter = E.Counter()
+ #   counter = E.Counter()
 
     for read in reads:
         
         (pos, cat) = getCrosslink(read)
-        counter[cat] += 1
+ #       counter[cat] += 1
 
         if read.is_reverse:
-            neg_depths[pos] += 1
+            neg_depths[float(pos)] += 1
         else:
-            pos_depths[pos] += 1
+            pos_depths[float(pos)] += 1
 
     pos_depths = pd.Series(pos_depths, dtype=dtype)
     neg_depths = pd.Series(neg_depths, dtype=dtype)
@@ -288,12 +288,13 @@ def countChr(reads, chr_len, dtype = 'uint16'):
                "Sum of depths is not equal to number of "
                "reads counted, possibly dtype %s not large enough" % dtype)
     
-    E.debug("Counted %i truncated on positive strand, %i on negative"
-            % (counter.truncated_pos, counter.truncated_neg))
-    E.debug("and %i deletion reads on positive strand, %i on negative"
-            % (counter.deletion_pos, counter.deletion_neg))
+  
+        E.debug("Counted %i truncated on positive strand, %i on negative"
+                % (counter.truncated_pos, counter.truncated_neg))
+        E.debug("and %i deletion reads on positive strand, %i on negative"
+                   % (counter.deletion_pos, counter.deletion_neg))
     
-    return (pos_depths, neg_depths, counter)
+    return (pos_depths, neg_depths)
 
 
 def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
@@ -314,13 +315,14 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
         # exlude Xlinked bases outside the interval (prevents double counting)
 
         if strand == "+":
-            exon_counts.append(count_results[0].loc[
-                (count_results[0].index >= exon[0]) &
-                (count_results[0].index < exon[1])])
+            if len(count_results[0]) > 0:
+                exon_counts.append(count_results[0].sort_index().loc[
+                    float(exon[0]):float(exon[1]-1)])
         elif strand == "-":
-            exon_counts.append(count_results[1].loc[
-                (count_results[1].index >= exon[0]) &
-                (count_results[1].index < exon[1])])
+            if len(count_results[1]) > 0:
+                exon_counts.append(count_results[1].sort_index().loc[
+                    float(exon[0]):float(exon[1]-1)])
+            
         else:
             sum_counts = count_results[0].loc[(count_results[0].index >= exon[0]) &
                                               (count_results[0].index < exon[1])] + \
@@ -328,7 +330,10 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
                                      (count_results[1].index < exon[1])]
             exon_counts.append(sum_counts)
 
-    transcript_counts = pd.concat(exon_counts)
+    if len(exon_counts) == 0:
+        transcript_counts = pd.Series()
+    else:
+        transcript_counts = pd.concat(exon_counts)
     # transcript_counts = transcript_counts.sort_index()
     return transcript_counts
         
