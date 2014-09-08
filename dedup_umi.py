@@ -83,10 +83,19 @@ def dedup(insam, outsam, ignore_umi, subset):
         if read.is_read2:
             continue
 
+
+        # Soft clipping maybe the best way to deal with short overhangs. 
+        # but it screws up deduping because two reads may report different
+        # starts that are due to different soft clipping
+
         if read.is_reverse:
             pos = read.aend
+            if read.cigar[-1][0] == 4:
+                pos = pos + read.cigar[-1][1]
         else:
             pos = read.pos
+            if read.cigar[0][0] == 4:
+                pos = pos - read.cigar[0][1]
             
         if not read.pos == last_pos or not read.tid == last_chr:
 

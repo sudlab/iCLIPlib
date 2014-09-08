@@ -224,8 +224,10 @@ def loadUMIStats(infile, outfile):
 
 
 ###################################################################
-@transform("sample_table.tsv", regex("(.+)"),
-           r"reaper_metadata.tsv")
+@transform(filter_phiX,
+           regex("(.+).fastq.clean.gz"),
+           add_inputs("sample_table.tsv"),
+           r"\1_reaper_metadata.tsv")
 def generateReaperMetaData(infile, outfile):
     '''Take the sample_table and use it to generate a metadata table
     for reaper in the correct format '''
@@ -234,19 +236,23 @@ def generateReaperMetaData(infile, outfile):
     adaptor_3prime = PARAMS["reads_3prime_adapt"]
 
     outlines = []
-    for line in IOTools.openFile(infile):
-        barcode = line.split("\t")[1]
-        outlines.append([barcode, adaptor_3prime, adaptor_5prime, "-"])
+    lane = P.snip(infile[0], ".fastq.clean.gz")
+    for line in IOTools.openFile(infile[1]):
+        fields = line.split("\t")
+        barcode = fields[1]
+        lanes = fields[-1].split(",")
+        if lane in lanes:
+            outlines.append([barcode, adaptor_3prime, adaptor_5prime, "-"])
 
     header = ["barcode", "3p-ad", "tabu", "5p-si"]
     PUtils.write(outfile, outlines, header)
 
 
 ###################################################################
-@follows(loadUMIStats)
+@follows(loadUMIStats, generateReaperMetaData)
 @split(extractUMI, regex(".+/(.+).fastq.umi_trimmed.gz"),
-       add_inputs(generateReaperMetaData, "sample_table.tsv"),
-       r"demux_fq/*_\1.fastq.1.gz")
+       add_inputs(r"\1_reaper_metadata.tsv", "sample_table.tsv"),
+       r"demux_fq/*_\1.fastq*gz")
 def demux_fastq(infiles, outfiles):
     '''Demultiplex each fastq file into a seperate file for each
     barcode/UMI combination'''
@@ -268,9 +274,14 @@ def demux_fastq(infiles, outfiles):
         line = line.split("\t")
         bc, name = line[1:]
         name = name.strip()
+        if PARAMS["reads_paired"]:
+            ext = "fastq.1.gz"
+        else:
+            ext = "fastq.gz"
+
         statement += '''checkpoint;
                         mv demux_fq/%(track)s_%(bc)s.clean.gz
-                           demux_fq/%(name)s_%(track)s.fastq.1.gz; ''' % locals()
+                           demux_fq/%(name)s_%(track)s.%(ext)s; ''' % locals()
 
     P.run()
 
@@ -315,13 +326,12 @@ def reconsilePairs(infiles, outfiles):
                            %(infiles)s > reconciled.dir/%(track)s.log '''
 
     P.run()
-      
-###################################################################
+
 
 ###################################################################
 @follows(mkdir("fastqc"))
-@transform(demux_fastq, regex(".+/(.+).fastq.gz"),
-           r"fastqc/\1.fastqc")
+@transform(demux_fastq, regex(".+/(.+).fastq.(.).gz"),
+           r"fastqc/\1_\2.fastqc")
 def qcDemuxedReads(infile, outfile):
     ''' Run fastqc on the post demuxing and trimmed reads'''
 
@@ -368,12 +378,12 @@ def PrepareReads():
 ###################################################################
 def mapping_files():
 
-    infiles = glob.glob("%s/*.fastq.1.gz" % PARAMS["input"])
+    infiles = glob.glob("%s/*.fastq*gz" % PARAMS["input"])
 
-    outfiles = ["mapping.dir/%(mapper)s.dir/%(track)s.%(mapper)s.bam"
+    outfiles = set(["mapping.dir/%(mapper)s.dir/%(track)s.%(mapper)s.bam"
                 % {"mapper": PARAMS["mappers"],
-                   "track": re.match("%s/(.+).fastq.1.gz" % PARAMS["input"], infile).groups()[0]}
-                for infile in infiles]
+                   "track": re.match("%s/(.+).fastq.*gz" % PARAMS["input"], infile).groups()[0]}
+                for infile in infiles])
 
     yield (infiles, outfiles)
 
@@ -396,7 +406,32 @@ def run_mapping(infiles, outfiles):
 
 
 ###################################################################
-@merge(run_mapping, "mapping.sentinal")
+@collate(run_mapping,
+         regex("(.+)/(.+\-.+\-[^_]+)_(.+)\.([^.]+)\.bam"),
+         r"\1/\2.\4.bam")
+def mergeBAMFiles(infiles, outfile):
+    '''Merge reads from the same library, run on different lanes '''
+
+    if len(infiles) == 1:
+        P.clone(infiles[0], outfile)
+        return
+
+    infiles = " ".join(infiles)
+    statement = ''' samtools merge %(outfile)s %(infiles)s >& %(outfile)s.log'''
+    P.run()
+
+
+###################################################################
+@transform(mergeBAMFiles, suffix(".bam"), ".bam.bai")
+def indexMergedBAMs(infile, outfile):
+    ''' Index the newly merged BAM files '''
+
+    statement = ''' samtools index %(infile)s '''
+    P.run()
+
+
+###################################################################
+@merge(indexMergedBAMs, "mapping.sentinal")
 def mapping_qc(infiles, outfile):
     ''' run mapping pipeline qc targets '''
 
@@ -492,28 +527,6 @@ def createViewMapping(infile, outfile):
 
 
 ###################################################################
-@collate("mapping.dir/*.dir/*.bam",
-         regex("(.+)/(.+\-.+\-[^_]+)_(.+)\.([^.]+)\.bam"),
-         r"\1/\2.\4.bam")
-def mergeBAMFiles(infiles, outfile):
-    '''Merge reads from the same library, run on different lanes '''
-
-    if len(infiles) == 1:
-        P.clone(infiles[0], outfile)
-        P.clone(infiles[0] + ".bai", outfile + ".bai")
-        return
-
-    infiles = " ".join(infiles)
-    statement = ''' samtools merge %(outfile)s %(infiles)s >& %(outfile)s.log;
-
-                    checkpoint;
-
-                    samtools index %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
 @follows(mapping_qc,loadContextIntervalStats )
 def mapping():
     pass
@@ -523,8 +536,9 @@ def mapping():
 # Deduping, Counting, etc
 ###################################################################
 @follows(mkdir("deduped.dir"), run_mapping)
-@transform(mergeBAMFiles, regex(".+/(.+)\.[^\.]+\.bam"),
-           r"deduped.dir/\1.bam")
+@transform(indexMergedBAMs, regex("(.+)/(.+)\.([^\.]+)\.bam.bai"),
+           inputs(r"\1/\2.\3\.bam"),
+           r"deduped.dir/\2.bam")
 def dedup_alignments(infile, outfile):
     ''' Deduplicate reads, taking UMIs into account'''
 
@@ -551,13 +565,16 @@ def dedup_alignments(infile, outfile):
 
 
 ###################################################################
-@transform([dedup_alignments,mergeBAMFiles], suffix(".bam"),
-           ".frag_length.tsv")
+@transform([dedup_alignments,mergeBAMFiles], 
+           regex("(.+).bam(?:.bai)?"),
+           "\1.frag_length.tsv")
 def getFragLengths(infile, outfile):
     ''' estimate fragment length distribution from read lengths'''
 
+    intrack = re.match("(.+).bam(?:.bai)?", infile).groups()[0]
+
     statement = ''' python %(project_src)s/length_stats.py
-                           -I %(infile)s
+                           -I %(infile)s.bam
                            -S %(outfile)s
                            -L %(outfile)s.log
                '''
@@ -889,7 +906,7 @@ def reproducibility():
 ###################################################################
 # Analysis
 ###################################################################
-@follows(mkdir("gene_profiles.dir"))
+@follows(mkdir("gene_profiles.dir"), mapping_qc)
 @transform(dedup_alignments, regex(".+/(.+).bam"),
            add_inputs("mapping.dir/geneset.dir/refcoding.gtf.gz"),
            r"gene_profiles.dir/\1.tsv")
@@ -924,6 +941,7 @@ def loadGeneProfiles(infiles, outfile):
                           options = "-i factor -i condition -i rep")
 
 ###################################################################
+@follows(mapping_qc)
 @transform("mapping.dir/geneset.dir/refcoding.gtf.gz",
            suffix(".gtf.gz"),
            ".exons.gtf.gz")
@@ -950,6 +968,7 @@ def transcripts2Exons(infile, outfile):
 
 
 ###################################################################
+@follows(mapping_qc)
 @transform("mapping.dir/geneset.dir/refcoding.gtf.gz",
            suffix(".gtf.gz"),
            ".introns.gtf.gz")
@@ -1052,7 +1071,7 @@ def profiles():
 ###################################################################
 # Calling significant clusters
 ###################################################################
-@follows(mkdir("clusters.dir"))
+@follows(mkdir("clusters.dir"), mapping_qc)
 @transform(dedup_alignments,
            regex(".+/(.+).bam"),
            add_inputs("mapping.dir/geneset.dir/reference.gtf.gz"),
