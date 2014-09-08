@@ -127,29 +127,31 @@ class DeferredOutput:
     def __init__(self, outfile, correct):
 
         self.outfile = outfile
-        self.output = pd.Series(index=pd.MultiIndex(levels=[[], []],
-                                                    labels=[[], []],
-                                                    names=["contig",
-                                                           "position"]),
-                                dtype="float_")
+        self.output = []
+        #      self.output = pd.Series(index=pd.MultiIndex(levels=[[], []],
+        #                                                  labels=[[], []],
+        #                                                  names=["contig",
+        #                                                         "position"]),
+        #                              dtype="float_")
         self.correct = correct
 
     def write(self, gene_results):
 
-        self.output = self.output.append(gene_results)
+        self.output.append(gene_results)
 
     def close(self):
 
+        output = pd.concat(self.output)
         if self.correct:
             E.info("Correcting p-values using BH ...")
-            corrected_pvals = multipletests(self.output, method="fdr_bh")
-            self.output = pd.Series(corrected_pvals[1], index=self.output.index)
+            corrected_pvals = multipletests(output, method="fdr_bh")
+            output = pd.Series(corrected_pvals[1], index=self.output.index)
 
         E.info("Writing output")
-        E.debug("output contains %i entries" % len(self.output))
-        self.output.to_csv(self.outfile,
-                           sep="\t",
-                           header=False)
+        E.debug("output contains %i entries" % len(output))
+        output.to_csv(self.outfile,
+                      sep="\t",
+                      header=False)
 
 
 class InstantOutput:

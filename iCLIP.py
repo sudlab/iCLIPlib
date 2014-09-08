@@ -265,12 +265,12 @@ def countChr(reads, chr_len, dtype = 'uint16'):
     pos_depths = collections.defaultdict(int)
     neg_depths = collections.defaultdict(int)
 
- #   counter = E.Counter()
+    counter = E.Counter()
 
     for read in reads:
         
         (pos, cat) = getCrosslink(read)
- #       counter[cat] += 1
+        counter[cat] += 1
 
         if read.is_reverse:
             neg_depths[float(pos)] += 1
@@ -288,13 +288,12 @@ def countChr(reads, chr_len, dtype = 'uint16'):
                "Sum of depths is not equal to number of "
                "reads counted, possibly dtype %s not large enough" % dtype)
     
-  
-        E.debug("Counted %i truncated on positive strand, %i on negative"
-                % (counter.truncated_pos, counter.truncated_neg))
-        E.debug("and %i deletion reads on positive strand, %i on negative"
-                   % (counter.deletion_pos, counter.deletion_neg))
+    E.debug("Counted %i truncated on positive strand, %i on negative"
+            % (counter.truncated_pos, counter.truncated_neg))
+    E.debug("and %i deletion reads on positive strand, %i on negative"
+            % (counter.deletion_pos, counter.deletion_neg))
     
-    return (pos_depths, neg_depths)
+    return (pos_depths, neg_depths, counter)
 
 
 def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
