@@ -136,8 +136,11 @@ PARAMS_ANNOTATIONS = P.peekParameters( PARAMS["annotations_dir"],
 import CGATPipelines.PipelineTracks as PipelineTracks
 
 # define some tracks if needed
-TRACKS = PipelineTracks.Tracks( PipelineTracks.Sample ).loadFromDirectory( 
-    glob.glob("*.ini" ), "(\S+).ini" )
+TRACKS = PipelineTracks.Tracks(PipelineTracks.Sample3)
+for line in IOTools.openFile("sample_table.tsv"):
+    track = line.split("\t")[2]
+    TRACKS.tracks.append(PipelineTracks.Sample3(filename=track))
+
 
 
 ###################################################################
@@ -194,7 +197,7 @@ def filterPhiX(infiles, outfile):
 def loadSampleInfo(infile, outfile):
 
     P.load(infile, outfile,
-           options="--header=format,barcode,track -i barcode -i track")
+           options="--header=format,barcode,track,lanes -i barcode -i track")
 ###################################################################
 @follows(mkdir("demux_fq"))
 @transform(filterPhiX, regex("(.+).fastq.clean.gz"),
@@ -224,7 +227,7 @@ def loadUMIStats(infile, outfile):
 
 
 ###################################################################
-@transform(filter_phiX,
+@transform(filterPhiX,
            regex("(.+).fastq.clean.gz"),
            add_inputs("sample_table.tsv"),
            r"\1_reaper_metadata.tsv")
@@ -240,7 +243,7 @@ def generateReaperMetaData(infile, outfile):
     for line in IOTools.openFile(infile[1]):
         fields = line.split("\t")
         barcode = fields[1]
-        lanes = fields[-1].split(",")
+        lanes = fields[-1].strip().split(",")
         if lane in lanes:
             outlines.append([barcode, adaptor_3prime, adaptor_5prime, "-"])
 
@@ -272,16 +275,16 @@ def demux_fastq(infiles, outfiles):
 
     for line in IOTools.openFile(samples):
         line = line.split("\t")
-        bc, name = line[1:]
+        bc, name, lanes = line[1:]
         name = name.strip()
         if PARAMS["reads_paired"]:
             ext = "fastq.1.gz"
         else:
             ext = "fastq.gz"
-
-        statement += '''checkpoint;
-                        mv demux_fq/%(track)s_%(bc)s.clean.gz
-                           demux_fq/%(name)s_%(track)s.%(ext)s; ''' % locals()
+        if track in lanes.strip().split(","):
+            statement += '''checkpoint;
+                         mv demux_fq/%(track)s_%(bc)s.clean.gz
+                            demux_fq/%(name)s_%(track)s.%(ext)s; ''' % locals()
 
     P.run()
 
@@ -330,14 +333,14 @@ def reconsilePairs(infiles, outfiles):
 
 ###################################################################
 @follows(mkdir("fastqc"))
-@transform(demux_fastq, regex(".+/(.+).fastq.(.).gz"),
-           r"fastqc/\1_\2.fastqc")
+@transform(demux_fastq, regex(".+/(.+).fastq(.*)\.gz"),
+           r"fastqc/\1\2.fastqc")
 def qcDemuxedReads(infile, outfile):
     ''' Run fastqc on the post demuxing and trimmed reads'''
 
     m = PipelineMapping.FastQc(nogroup=False)
     statement = m.build((infile,),outfile)
-    exportdir = "."
+    exportdir = "fastqc"
     P.run()
 
 
@@ -379,11 +382,14 @@ def PrepareReads():
 def mapping_files():
 
     infiles = glob.glob("%s/*.fastq*gz" % PARAMS["input"])
-
-    outfiles = set(["mapping.dir/%(mapper)s.dir/%(track)s.%(mapper)s.bam"
-                % {"mapper": PARAMS["mappers"],
-                   "track": re.match("%s/(.+).fastq.*gz" % PARAMS["input"], infile).groups()[0]}
-                for infile in infiles])
+    infiles = [infile for infile in infiles if ".fastq.umi_trimmed.gz" not in infile]
+    outfiles = set(
+        ["mapping.dir/%(mapper)s.dir/%(track)s.%(mapper)s.bam"
+         % {"mapper": PARAMS["mappers"],
+            "track": re.match("%s/(.+).fastq.*gz"
+                              % PARAMS["input"], infile).groups()[0]}
+         for infile in infiles
+         if "umi_trimmed" not in infile])
 
     yield (infiles, outfiles)
 
@@ -406,9 +412,10 @@ def run_mapping(infiles, outfiles):
 
 
 ###################################################################
-@collate(run_mapping,
+@follows(run_mapping)
+@collate("mapping.dir/*.dir/*-*-*_*.bam",
          regex("(.+)/(.+\-.+\-[^_]+)_(.+)\.([^.]+)\.bam"),
-         r"\1/\2.\4.bam")
+         r"\1/merged_\2.\4.bam")
 def mergeBAMFiles(infiles, outfile):
     '''Merge reads from the same library, run on different lanes '''
 
@@ -505,6 +512,7 @@ def getContextIntervalStats(infile, outfile):
     P.run()
 
 
+
 ###################################################################
 @transform(getContextIntervalStats, suffix(".tsv.gz"),
            ".load")
@@ -536,8 +544,8 @@ def mapping():
 # Deduping, Counting, etc
 ###################################################################
 @follows(mkdir("deduped.dir"), run_mapping)
-@transform(indexMergedBAMs, regex("(.+)/(.+)\.([^\.]+)\.bam.bai"),
-           inputs(r"\1/\2.\3\.bam"),
+@transform(indexMergedBAMs, regex("(.+)/merged_(.+)\.([^\.]+)\.bam.bai"),
+           inputs(r"\1/merged_\2.\3.bam"),
            r"deduped.dir/\2.bam")
 def dedup_alignments(infile, outfile):
     ''' Deduplicate reads, taking UMIs into account'''
@@ -565,16 +573,16 @@ def dedup_alignments(infile, outfile):
 
 
 ###################################################################
-@transform([dedup_alignments,mergeBAMFiles], 
-           regex("(.+).bam(?:.bai)?"),
-           "\1.frag_length.tsv")
+@transform([dedup_alignments,indexMergedBAMs], 
+           regex("(?:merged_)?(.+).bam(?:.bai)?"),
+           r"\1.frag_length.tsv")
 def getFragLengths(infile, outfile):
     ''' estimate fragment length distribution from read lengths'''
 
     intrack = re.match("(.+).bam(?:.bai)?", infile).groups()[0]
 
     statement = ''' python %(project_src)s/length_stats.py
-                           -I %(infile)s.bam
+                           -I %(intrack)s.bam
                            -S %(outfile)s
                            -L %(outfile)s.log
                '''
@@ -665,7 +673,7 @@ def loadDedupedUMIStats(infiles, outfile):
 
 ###################################################################
 @follows(mkdir("saturation.dir"), run_mapping)
-@split(mergeBAMFiles, regex(".+/(.+)\.[^\.]+\.bam"),
+@split(indexMergedBAMs, regex(".+/merged_(.+)\.[^\.]+\.bam.bai"),
        [r"saturation.dir/\1.%.3f.bam" % (1.0/(2 ** x))
         for x in range(1, 6)] +
        [r"saturation.dir/\1.%.3f.bam" % (x/10.0)
@@ -675,8 +683,8 @@ def subsetForSaturationAnalysis(infile, outfiles):
     return the context stats. Test for resturn on investment for
     further sequencing of the same libraries '''
 
-    track = re.match(".+/(.+)\.[^\.]+\.bam", infile).groups()[0]
-
+    track = re.match(".+/merged_(.+)\.[^\.]+\.bam", infile).groups()[0]
+    infile = P.snip(infile, ".bai")
     statements = []
     statement_template = '''
                             python %%(project_src)s/dedup_umi.py
@@ -721,15 +729,15 @@ def loadSubsetBamStats(infiles, outfile):
 
 
 ###################################################################
-@transform([mergeBAMFiles, dedup_alignments, subsetForSaturationAnalysis],
-           suffix(".bam"),
+@transform([indexMergedBAMs, dedup_alignments, subsetForSaturationAnalysis],
+           regex("(?:merged_)?(.+).bam(?:.bai)?"),
            add_inputs(generateContextBed),
-           ".reference_context.tsv")
+           r"\1.reference_context.tsv")
 def buildContextStats(infiles, outfile):
     ''' Find context from reads '''
 
     infile, reffile = infiles
-
+    infile = re.match("(.+.bam)(?:.bai)?", infile).groups()[0]
     statement = ''' python %(scripts_dir)s/bam_vs_bed.py
                    --min-overlap=0.5
                    --log=%(outfile)s.log
@@ -1087,6 +1095,7 @@ def callSignificantClusters(infiles,outfile):
     if PARAMS["clusters_grouping"]:
         options += " --grouping=%s" % PARAMS["clusters_grouping"]
 
+    job_options = "-l mem_free=10G"
     statement = '''python %(scriptsdir)s/gtf2gtf.py 
                           --filter=longest-gene
                           --sort=gene+transcript
