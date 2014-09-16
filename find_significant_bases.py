@@ -145,7 +145,7 @@ class DeferredOutput:
         if self.correct:
             E.info("Correcting p-values using BH ...")
             corrected_pvals = multipletests(output, method="fdr_bh")
-            output = pd.Series(corrected_pvals[1], index=self.output.index)
+            output = pd.Series(corrected_pvals[1], index=output.index)
 
         E.info("Writing output")
         E.debug("output contains %i entries" % len(output))
@@ -192,7 +192,7 @@ def calculateProbabilities(counts, window_size, length, start=0):
     total_counts = counts.sum()
     
    
-    single_base_ps = 1 - binom.cdf(counts-2, total_counts, 1.0/length)
+    single_base_ps = 1 - binom.cdf(counts-1, total_counts, 1.0/length)
 
     heights = np.zeros(len(counts))
 
@@ -217,6 +217,7 @@ def calculateProbabilities(counts, window_size, length, start=0):
        
     window_ps = pd.Series(1 - binom.cdf(heights - 1, total_counts, ps), index = counts.index)
 
+    
     return single_base_ps * window_ps
 
 
@@ -244,7 +245,7 @@ parses command line options in sys.argv, unless *argv* is given.
                       help="Output continuously to the pipe rather than in a"
                            "chunk at the end")
     parser.add_option("-t", "--dtype", dest="dtype", type="string",
-                      default="uint32",
+                      default="int32",
                       help="Numpy dtype for storing counts")
     parser.add_option("-w", "--window-size", dest="window_size",
                       type="int", default=15,
