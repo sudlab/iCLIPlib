@@ -1189,7 +1189,7 @@ def export():
 ## primary targets
 ###################################################################
 @follows(PrepareReads, mapping, MappingStats, reproducibility,
-         profiles)
+         profiles, clusters)
 def full():
     pass
 
