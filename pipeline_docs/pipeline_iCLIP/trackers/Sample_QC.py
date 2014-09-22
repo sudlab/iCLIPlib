@@ -1,10 +1,10 @@
-from SphinxReport.Tracker import *
+
 from ProjectTracker import *
 import numpy as np
 import scipy as sp
 from collections import OrderedDict
 
-class ContextStats(TrackerSQL):
+class ContextStats(ProjectTracker):
 
     # slices = ["mapping", "deduped"]
     def getTracks(self):
@@ -71,7 +71,7 @@ class ContextRepresentation(ContextStats):
         return results
 
         
-class ContextSaturation(TrackerSQL):
+class ContextSaturation(ProjectTracker):
 
     def getTracks(self):
         return self.getValues("SELECT DISTINCT category FROM saturation_context_stats")
@@ -95,7 +95,7 @@ class ContextSaturation(TrackerSQL):
         return results
 
 
-class AlignmentSaturation(TrackerSQL):
+class AlignmentSaturation(ProjectTracker):
 
     def getTracks(self):
         return self.getValues("SELECT DISTINCT track FROM saturation_context_stats")
@@ -200,13 +200,13 @@ class mm_fit_stats(LibrarySize_mm, fit_stats):
     pass
 
         
-class UMI_stats(TrackerSQL):
+class UMI_stats(ProjectTracker):
 
     pattern = "(.+[^_])umi_stats"
 
     def __call__(self, track):
 
-        statement = '''SELECT track, UMI, (Count +0.0)/sum_count as freq
+        statement = '''SELECT track as sample, UMI, (Count +0.0)/sum_count as freq
                        FROM %(track)sumi_stats as umi
                        INNER JOIN
                         sample_table as samples 
@@ -226,9 +226,9 @@ class ReadsPerSample(ProjectTracker):
     pattern = "(.+[^_])umi_stats"
 
     def __call__(self, track):
-
+        
         mapper = PARAMS["mappers"]
-        statement = '''SELECT samples.track as track,
+        statement = '''SELECT samples.track as sample,
                               sum(count) as total
                        FROM %(track)sumi_stats as umi
                        INNER JOIN
@@ -241,12 +241,14 @@ class ReadsPerSample(ProjectTracker):
 
 
 
-class PercentDemuxed(ReadsPerSample):
+class PercentDemuxed(ProjectTracker):
+
+    pattern = "(.+[^_])umi_stats"
 
     def __call__(self, track):
 
         mapper = PARAMS["mappers"]
-        statement = '''SELECT samples.track as track,
+        statement = '''SELECT samples.track as sample,
                               (vm.reads_total +0.0)/sum(count) as demuxed
                        FROM %(track)sumi_stats as umi
                        INNER JOIN
@@ -254,53 +256,53 @@ class PercentDemuxed(ReadsPerSample):
                        ON samples.barcode = umi.Sample
                        INNER JOIN
                          mapping.view_mapping as vm
-                       ON vm.track = samples.track || '_%(track)s.%(mapper)s'
+                       ON vm.track = '%(track)s_' || samples.track || '.%(mapper)s'
                        GROUP BY Sample '''
 
         return self.getAll(statement)
 
 
-class PercentMapped(ReadsPerSample):
+class PercentMapped(ProjectTracker):
 
+    tracks = ["merged"]
     def __call__(self, track):
 
         mapper = PARAMS["mappers"]
-        statement = '''SELECT samples.track as track,
+        statement = '''SELECT samples.track as sample,
                               (vm.reads_mapped +0.0)/vm.reads_total as mapped
-                       FROM %(track)sumi_stats as umi
-                       INNER JOIN
+                       FROM
                         sample_table as samples
-                       ON samples.barcode = umi.Sample
                        INNER JOIN
                          mapping.view_mapping as vm
-                       ON vm.track = samples.track || '_%(track)s.%(mapper)s'
+                       ON vm.track = "%(track)s_" || samples.track || '.%(mapper)s'
                        GROUP BY Sample '''
         return self.getAll(statement)
 
 
-class PercentDeDuped(ReadsPerSample):
+class PercentDeDuped(ProjectTracker):
 
+    tracks = ["merged"]
     def __call__(self, track):
 
         mapper=PARAMS["mappers"]
 
-        statement = '''SELECT dd.track as track,
+        statement = '''SELECT dd.track as sample,
                        (dd.counts + 0.0)/vm.reads_mapped as p_unique
                        FROM
                         deduped_bam_stats as dd
                        INNER JOIN
                         mapping.view_mapping as vm
-                       ON vm.track = dd.track || '_%(track)s.%(mapper)s'
+                       ON vm.track = '%(track)s_' || dd.track || '.%(mapper)s'
                        WHERE dd.category = 'reads_mapped' '''
 
         return self.getAll(statement)
 
 
-class FinalReads(TrackerSQL):
+class FinalReads(ProjectTracker):
 
     def __call__(self, track):
 
-        statement = '''SELECT dd.track as track,
+        statement = '''SELECT dd.track as sample,
                        dd.counts as reads_mapped
                        FROM
                         deduped_bam_stats as dd
@@ -309,7 +311,7 @@ class FinalReads(TrackerSQL):
 
         return self.getAll(statement)
 
-class PercentSpliced(TrackerSQL):
+class PercentSpliced(ProjectTracker):
     ''' Percent of deduped reads that are spliced '''
 
     def __call__(self, track):
@@ -323,7 +325,7 @@ class PercentSpliced(TrackerSQL):
                        WHERE category = 'alignments_mapped' '''
         return self.getAll(statement)
 
-class Reproducibility(TrackerSQL):
+class Reproducibility(ProjectTracker):
 
     table = "experiment_reproducibility"
     pattern = "(.+\-.+)\-.+\.bam"
@@ -451,7 +453,7 @@ class ReproducibilityReplicateVsControl(Reproducibility):
         return results
 
 
-class ClusterSamplesOnReproducibility(TrackerSQL):
+class ClusterSamplesOnReproducibility(ProjectTracker):
 
     def __call__(self, track):
 
@@ -486,11 +488,11 @@ class ClusterSamplesOnReproducibility(TrackerSQL):
         return odict((("text", "#$rpl %i$#\n" % R["dev.cur"]()[0]),))
 
 
-class DedupedUMIStats(TrackerSQL):
+class DedupedUMIStats(ProjectTracker):
 
     def __call__(self,track):
 
-        statement = ''' SELECT dus.track, umi, count, (count + 0.0)/sum_count as freq
+        statement = ''' SELECT dus.track as sample, umi, count, (count + 0.0)/sum_count as freq
                           FROM dedup_umi_stats as dus
                        INNER JOIN (SELECT track, sum(count) as sum_count 
                                      FROM dedup_umi_stats
@@ -498,8 +500,8 @@ class DedupedUMIStats(TrackerSQL):
                                ON dus.track = sum_counts.track '''
         results = self.getAll(statement)
         
-        results['Factor'] = [x.split("-")[0] for x in results['track']]
-        results['replicate'] = [x.split("-")[-1] for x in results['track']]
+        results['Factor'] = [x.split("-")[0] for x in results['sample']]
+        results['replicate'] = [x.split("-")[-1] for x in results['sample']]
         return results
 
 
@@ -513,12 +515,13 @@ class FragLengths(ProjectTracker):
 
     def __call__(self, track):
 
+
         statement = '''SELECT length, count
                        FROM %(table)s
-                       WHERE track LIKE '%(track)s%%' '''
+                       WHERE track LIKE '%%%(track)s%%' '''
+
 
         results = self.getAll(statement)
-
         bins = map(int, PARAMS["experiment_length_bins"].split(","))
 
         bins = [bin for bin in bins if bin < max(results["Length"])]
@@ -535,8 +538,6 @@ class FragLengths(ProjectTracker):
                                       start >= bins[i] and
                                       start < bins[i+1]])
         
-        print (zip(*results))
-        print [count for start, count in zip(*results.itervalues()) if start >= bins[-1]]
         return_vals[">=%i" % bins[-1]] = sum([count for start, count in
                                               zip(*results.itervalues()) if
                                              start >= bins[-1]])
@@ -574,3 +575,28 @@ class LengthDedupedRatios(MappedFragLength,DedupedFragLengths):
 
         return results
 
+
+
+class TotalMergedReads(ProjectTracker):
+
+    def getTracks(self):
+
+        tracks = self.getValues("SELECT DISTINCT track FROM mapping.view_mapping")
+        
+
+        pattern = re.compile("merged_(.+-.+-R.+)\..+")
+        tracks = [pattern.match(track).groups()[0] for track in tracks if
+                  pattern.match(track)]
+        
+        
+        return tracks
+
+
+    def __call__(self,track):
+
+        mapper = PARAMS["mappers"]
+        statement = '''SELECT reads_total/2.0 as Reads
+                       FROM mapping.view_mapping
+                       WHERE track='merged_%(track)s.%(mapper)s' '''
+
+        return self.getDataFrame(statement)

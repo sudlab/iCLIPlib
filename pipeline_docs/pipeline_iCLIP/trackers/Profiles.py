@@ -1,4 +1,4 @@
-from SphinxReport.Tracker import *
+from ProjectTracker import *
 
 
 class TrackerImagesPlus(TrackerImages):
@@ -70,3 +70,24 @@ class ExonEndProfiles(TrackerImagesPlus):
     glob = "gene_profiles.dir/*introns.tssprofile.png"
     pattern = "./(.+\-.+)\-(.+).introns.tssprofile.png"
 
+
+class GeneProfiles2(ProjectTracker):
+
+    def getSlices(self):
+
+        return self.getValues("SELECT DISTINCT rep FROM gene_profiles")
+
+    def getTracks(self):
+        return self.getValues("SELECT DISTINCT factor FROM gene_profiles")
+
+    def __call__(self, track, slice):
+
+        statement = '''SELECT bin, area, region
+                       FROM gene_profiles
+                       WHERE rep='%(slice)s' AND factor='%(track)s' '''
+
+        df = self.getDataFrame(statement)
+        
+        df["area"] = pandas.rolling_mean(df["area"], window=5)
+
+        return df

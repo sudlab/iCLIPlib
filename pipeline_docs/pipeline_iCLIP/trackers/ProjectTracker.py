@@ -1,4 +1,4 @@
-from SphinxReport.Tracker import *
+from CGATReport.Tracker import *
 
 import CGAT.Pipeline as P
 
@@ -11,28 +11,39 @@ P.getParameters(
      "pipeline.ini" ] )
 
 PARAMS = P.PARAMS
+
+P.getParameters( ["%s/pipeline.ini" % __file__[:-len(".py")],
+                  "../pipeline.ini",
+                  "%s/pipeline.ini" % PARAMS["iclip_dir"],
+                  "pipeline.ini" ])
+
+PARAMS = P.PARAMS
 class ProjectTracker(TrackerSQL):
 
 
     PARAMS = P.PARAMS
 
     def __init__(self, *args, **kwargs ):
-        TrackerSQL.__init__(self, *args, backend = "sqlite:///./"+self.PARAMS['database'] , **kwargs )
+        database_path = os.path.join(PARAMS["iclip_dir"], PARAMS["iclip_database"])
+        database = database_path
+        
+        TrackerSQL.__init__(self, *args, backend = "sqlite:///" + database , **kwargs )
         
         # issuing the ATTACH DATABASE into the sqlalchemy ORM (self.db.execute( ... ))
         # does not work. The database is attached, but tables are not accessible in later
         # SELECT statements.
+
+        mapping_database = os.path.join(PARAMS["iclip_dir"],"mapping.dir/csvdb")
         if not self.db:
             def _create():
                 import sqlite3
-                conn = sqlite3.connect(re.sub( "sqlite:///", "", self.PARAMS['database']) )
+                conn = sqlite3.connect(database )
                 statement = '''ATTACH DATABASE '%s' as annotations;
-                   ATTACH DATABASE 'mapping.dir/csvdb' as mapping; ''' % self.PARAMS["annotations_database"]
-                                                             
-         
+                   ATTACH DATABASE '%s' as mapping; ''' % (self.PARAMS["annotations_database"],
+                                                           mapping_database)
      
                 conn.executescript(statement)
-                print statement 
+                
                 return conn
               
             self.connect( creator = _create )

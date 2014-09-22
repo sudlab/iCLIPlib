@@ -27,21 +27,33 @@ release=0.1
 ########################################################
 # the genome to use (UCSC convention)
 genome=hg19
-
+genome_dir=/ifs/mirror/genomes/plain
 ################################################################
 #
 # Location of annotation database
 #
 ################################################################
 [annotations]
-database=/ifs/data/annotations/hg19_ensembl62/csvdb
+database=/ifs/data/annotations/hg19_ensembl75/csvdb
 geneset=/ifs/projects/proj028/iCLIP_pilot_paired/mapping.dir/geneset.dir/reference.gtf.gz
 
 # directory with annotation information
-dir=
+dir=/ifs/data/annotations/hg19_ensembl75
+
+[dir]
+#Paths to various things, usually other pipeline runs
+iclip=/ifs/projects/proj028/iCLIP_pilot_paired
 
 [sailfish]
 kmer=20
+libtype=T=PE:O=><:S=U
+
+[featurecounts]
+
+strand=0
+threads=12
+options=
+
 ################################################################
 #
 # sphinxreport build options

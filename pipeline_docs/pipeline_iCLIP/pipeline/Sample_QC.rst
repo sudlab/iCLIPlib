@@ -4,7 +4,7 @@ Distribution of UMIs
 
 .. report:: Sample_QC.UMI_stats
    :render: r-ggplot
-   :statement: aes(x=track,y=freq) + geom_violin() + scale_y_log10() + theme_bw() + theme(axis.text.x = element_text(angle = 90)) + geom_hline(yintercept=1/(4^5), lty=2)
+   :statement: aes(x=sample,y=freq) + geom_violin() + scale_y_log10() + theme_bw() + theme(axis.text.x = element_text(angle = 90)) + geom_hline(yintercept=1/(4^5), lty=2)
 
    Distribution of UMIs
 
@@ -15,21 +15,21 @@ Reads Per Sample
 
 .. report:: Sample_QC.ReadsPerSample
    :render: r-ggplot
-   :statement: aes(y=total, x=track) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x,...) format(x,...,big.mark=",", scientific= F, trim = T)) + ylab("Reads")
+   :statement: aes(y=total, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x,...) format(x,...,big.mark=",", scientific= F, trim = T)) + ylab("Reads")
 
    Number of reads for each barcode
 
 
 .. report:: Sample_QC.PercentDemuxed
    :render: r-ggplot
-   :statement: aes(y=demuxed * 100, x=track) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x)) + ylab("Percent Passed Filter")
+   :statement: aes(y=demuxed * 100, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x)) + ylab("Percent Passed Filter")
 
    Reads succesfully demuxed and filtered
 
 
 .. report:: Sample_QC.PercentMapped
    :render: r-ggplot
-   :statement: aes(y=mapped * 100, x=track) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x), limits = c(0,100)) + ylab("Percent reads mapped")
+   :statement: aes(y=mapped * 100, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x), limits = c(0,100)) + ylab("Percent reads mapped")
 
    Percent Reads mapped
 
@@ -37,7 +37,7 @@ Reads Per Sample
 
 .. report:: Sample_QC.PercentDeDuped
    :render: r-ggplot
-   :statement: aes(y=p_unique * 100, x=track) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x)) + ylab("Percent reads unique")
+   :statement: aes(y=p_unique * 100, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x)) + ylab("Percent reads unique")
 
    Percent of Reads Unique
 
@@ -45,7 +45,7 @@ Reads Per Sample
 
 .. report:: Sample_QC.FinalReads
    :render: r-ggplot
-   :statement: aes(y=reads_mapped, x=track) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x,...) format(x,...,big.mark=",", scientific= F, trim = T)) + ylab("Total unique mapped reads")
+   :statement: aes(y=reads_mapped, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x,...) format(x,...,big.mark=",", scientific= F, trim = T)) + ylab("Total unique mapped reads")
 
    Final total mapped reads
 
@@ -58,7 +58,7 @@ Reads Per Sample
 .. report:: Sample_QC.ReadLengths
    :render: r-ggplot
    :transform: melt
-   :statement: aes(x=Track, y=Data/sum(Data), fill=Slice) + geom_bar(position="fill", stat="identity") + ylab("Fraction of reads") + scale_fill_discrete(name="Length bin (bp)") + coord_flip() + theme_bw()
+   :statement: aes(x=track, y=value/sum(variable), fill=Slice) + geom_bar(position="fill", stat="identity") + ylab("Fraction of reads") + scale_fill_discrete(name="Length bin (bp)") + coord_flip() + theme_bw()
 
    Read length distribution of unmapped reads
 
@@ -70,7 +70,7 @@ Saturation Analysis
 
 .. report:: Sample_QC.AlignmentSaturation
    :render: r-ggplot
-   :transform: label-paths
+   :groupby: all
    :statement: aes(x=subset, y=counts, color = factor, shape = factor) + geom_point() + geom_line() + facet_wrap(~replicate) + theme_bw() + theme(aspect.ratio = 1)
 
    Subsampling of alignments
@@ -78,7 +78,7 @@ Saturation Analysis
 
 .. report:: Sample_QC.AlignmentSaturation
    :render: r-ggplot
-   :transform: label-paths
+   :groupby: all
    :statement: aes(x=counts/subset, y=counts, color = factor, shape = factor) + geom_point() + geom_line() + facet_wrap(~replicate) + theme_bw() + theme(aspect.ratio = 1)
 
    Tests for model assumptions
@@ -106,8 +106,8 @@ Saturation Analysis
 
 .. report:: Sample_QC.mm_fit_stats
    :render: r-ggplot
-   :transform: label-paths
-   :statement: aes(x=Slice, y=Library.Size) + geom_bar(stat="identity") + geom_bar(aes(y=Library.Size*Percent.Saturation/100), stat="identity", fill = "orange") + theme_bw() + theme(axis.text.x = element_text(angle=90))
+   :groupby: all
+   :statement: aes(x=track, y=Library.Size) + geom_bar(stat="identity") + geom_bar(aes(y=Library.Size*Percent.Saturation/100), stat="identity", fill = "orange") + theme_bw() + theme(axis.text.x = element_text(angle=90))
 
    Library size estimates
 
@@ -116,6 +116,10 @@ Context Stats
 
 .. report:: Sample_QC.ContextStats
    :render: pie-plot
+   :transform: pivot
+   :pivot-index: track
+   :pivot-column: slice
+   :pivot-value: alignments
    :layout: column-4
 
    Mapping Contexts for deduped reads
@@ -137,8 +141,8 @@ Reproducilbity measures the number of sites with at least n reads mapping to the
 
 .. report:: Sample_QC.Reproducibility
    :render: r-ggplot
-   :transform: label-paths
-   :statement: aes(level, reproducibility, color=Replicate) + geom_line() + geom_point() + facet_grid(Slice ~ Track) + coord_cartesian(xlim=c(0,5)) + theme_bw()
+   :groupby: all
+   :statement: aes(level, reproducibility, color=Replicate) + geom_line() + geom_point() + facet_grid(slice ~ track) + coord_cartesian(xlim=c(0,5)) + theme_bw()
    :tf-label-level: 3
 
    Reproduciblity
@@ -148,8 +152,8 @@ The problem with the measure above (which is the one outlined in Sutomui et al) 
 
 .. report:: Sample_QC.NormReproducibility
    :render: r-ggplot
-   :transform: label-paths
-   :statement: aes(level, reproducibility, color=Replicate) + geom_line() + geom_point() + facet_grid(Slice ~ Track) + coord_cartesian(xlim=c(0,5), ylim=c(0,1)) + theme_bw()
+   :groupby: all
+   :statement: aes(level, reproducibility, color=Replicate) + geom_line() + geom_point() + facet_grid(slice ~ track) + coord_cartesian(xlim=c(0,5), ylim=c(0,1)) + theme_bw()
    :tf-label-level: 3
 
    Normalised Reproduciblity
@@ -158,9 +162,9 @@ The next plot shows how reproducible cross-linked bases are in the control sampl
 
 .. report:: Sample_QC.ReproducibilityVsControl
    :render: r-ggplot
-   :transform: label-paths
+   :groupby: all
    :slices: 1,3
-   :statement: aes(level,reproducibility,color=Replicate) + geom_line() + geom_point() + facet_grid(Slice~Track) + theme_bw() + coord_cartesian(xlim = c(0,25))
+   :statement: aes(level,reproducibility,color=Replicate) + geom_line() + geom_point() + facet_grid(slice~track) + theme_bw() + coord_cartesian(xlim = c(0,25))
    :tf-label-level: 3
 
    Reproducibility vs. Controls
@@ -171,8 +175,8 @@ Given that there is some reproducibility between one replicate and others pullin
 
 .. report:: Sample_QC.ReproducibilityReplicateVsControl
    :render: r-ggplot
-   :transform: label-paths
-   :statement: aes(depth,ratio,color=Replicate) + geom_line() + geom_point() + facet_grid(Slice~Track) + scale_y_log10() + coord_cartesian(xlim=c(0,10)) + theme_bw()
+   :groupby: all
+   :statement: aes(depth,ratio,color=Replicate) + geom_line() + geom_point() + facet_grid(slice~track) + scale_y_log10() + coord_cartesian(xlim=c(0,10)) + theme_bw()
    :tf-label-level: 3
    :slices: 1
 
