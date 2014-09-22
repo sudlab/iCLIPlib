@@ -190,9 +190,13 @@ def calculateProbabilities(counts, window_size, length, start=0):
     counts = counts[(counts.index.values >= start) &
                     (counts.index.values < (start + length))]
     total_counts = counts.sum()
-    
    
-    single_base_ps = 1 - binom.cdf(counts-1, total_counts, 1.0/length)
+    # probability is counts-2 because we want P(X>=x) which is
+    # 1 - P(X<x-1). Thats -1. The other -1 comes from the fact
+    # that we want the p that any base in the transcript has
+    # X>=x, not just this specific one.
+
+    single_base_ps = 1 - binom.cdf(counts-2, total_counts, 1.0/length)
 
     heights = np.zeros(len(counts))
 
@@ -217,7 +221,6 @@ def calculateProbabilities(counts, window_size, length, start=0):
        
     window_ps = pd.Series(1 - binom.cdf(heights - 1, total_counts, ps), index = counts.index)
 
-    
     return single_base_ps * window_ps
 
 
