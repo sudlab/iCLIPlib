@@ -61,14 +61,123 @@ import CGAT.Experiment as E
 import random
 import collections
 
-def dedup(insam, outsam, ignore_umi, subset):
 
+def breadth_first_search(node, graph):
+    '''Returns all nodes reachable from node in graph
+    where graph is an adjecency list implemented as a dictionary'''
+
+    found = set()
+    queue = list()
+    queue.append(node)
+    while len(queue) != 0:
+        current, queue = queue[-1], queue[:-1]
+        found.add(current)
+        for child in graph[current]:
+            if child not in found:
+                queue.append(child)
+    return found
+
+
+def connected_components(graph):
+    '''Takes a graph as a dictionary based adjencency list
+    and returns a list of sets, where each set is repesents
+    a connected component in the graph'''
+
+    found = list()
+    components = list()
+    for node in graph:
+        if node not in found:
+            component = breadth_first_search(node, graph)
+            found.extend(component)
+            components.append(component)
+    return components
+
+
+def edit_dist(first, second):
+    ''' returns the edit distance/hamming distances between
+    its two arguements '''
+
+    dist = sum([not a == b for a, b in zip(first, second)])
+    return dist
+
+
+def get_adj_list(umis, threshold=1):
+    '''Returns dictionary where each entry represents the nodes
+    adjecent to the dictionary key'''
+
+    return {umi: [umi2 for umi2 in umis
+                  if 0 < edit_dist(umi, umi2) <= threshold]
+            for umi in umis}
+
+
+def remove_umis(adj_list, cluster, nodes):
+    '''removes the specified nodes from the cluster and returns
+    the remaining nodes '''
+
+    # list incomprehension: for x in nodes: for node in adj_list[x]: yield node
+    nodes_to_remove = set([node
+                           for x in nodes
+                           for node in adj_list[x]] + nodes)
+
+    return cluster - nodes_to_remove
+
+
+def get_best(cluster, adj_list, counts):
+    '''Finds the nodes that best explain the cluster by successively
+    removing more and more nodes until the cluster is explained.
+    Nodes are removed in order of their count. '''
+
+    if len(cluster) == 1:
+        return list(cluster)
+
+    sorted_nodes = sorted(cluster, key=lambda x: counts[x],
+                          reverse=True)
+
+    for i in range(len(sorted_nodes) - 1):
+        if len(remove_umis(adj_list, cluster, sorted_nodes[:i+1])) == 0:
+            return sorted_nodes[:i+1]
+
+
+def cluster_and_reduce(bundle, threshold=1):
+    ''' Recieves a bundle of reads, clusters them on edit distance
+    and selects connected clusters using the edit distance threshold.
+    Within each cluster the UMIs with the highest reads are progressively
+    selected, until the whole cluster is explained. Yeilds the selected
+    reads '''
+
+    umis = bundle.keys()
+    counts = {umi: bundle[umi]["count"] for umi in umis}
+
+    adj_list = get_adj_list(umis, threshold)
+    clusters = connected_components(adj_list)
+
+    for cluster in clusters:
+        for umi in get_best(cluster, adj_list, counts):
+            yield bundle[umi]["read"]
+
+
+def get_bundles(insam, ignore_umi=False, subset=None, paired=False,
+                chrom=None, spliced=False, soft_clip_threshold=0):
+    ''' Returns a dictionary of dictionaries, representing the unique reads at
+    a position/spliced/strand combination. The key to the top level dictionary
+    is a umi. Each dictionary contains a "read" entry with the best read, and a
+    count entry with the number of reads with that position/spliced/strand/umi
+    combination'''
+    
     last_pos = 0
     last_chr = ""
-    reads_dict = collections.defaultdict(dict)
-    read_counts = collections.defaultdict(dict)
+    reads_dict = collections.defaultdict(
+        lambda: collections.defaultdict(
+            lambda: collections.defaultdict(dict)))
+    read_counts = collections.defaultdict(
+        lambda: collections.defaultdict(dict))
     
-    for read in insam.fetch():
+    if chrom:
+        inreads = insam.fetch(reference=chrom)
+    else:
+        inreads = insam.fetch()
+        
+    for read in inreads:
 
         if subset:
             if random.random() >= subset:
@@ -77,39 +186,46 @@ def dedup(insam, outsam, ignore_umi, subset):
         if read.is_unmapped:
             continue
 
-        if read.mate_is_unmapped:
+        if read.mate_is_unmapped and paired:
             continue
 
         if read.is_read2:
             continue
 
-
-        # Soft clipping maybe the best way to deal with short overhangs. 
-        # but it screws up deduping because two reads may report different
-        # starts that are due to different soft clipping
+        is_spliced = False
 
         if read.is_reverse:
             pos = read.aend
             if read.cigar[-1][0] == 4:
                 pos = pos + read.cigar[-1][1]
+            start = read.pos
+
+            if ('N' in read.cigarstring or
+                (read.cigar[0][0] == 4 and
+                 read.cigar[0][1] > soft_clip_threshold)):
+                is_spliced = True
         else:
             pos = read.pos
             if read.cigar[0][0] == 4:
                 pos = pos - read.cigar[0][1]
-            
-        if not read.pos == last_pos or not read.tid == last_chr:
+            start = pos
 
-            out_keys = [x for x in reads_dict.keys() if x < read.pos]
+            if ('N' in read.cigarstring or
+                (read.cigar[-1][0] == 4 and
+                 read.cigar[-1][1] > soft_clip_threshold)):
+                is_spliced = True
+
+        if start > last_pos and not read.tid == last_chr:
+
+            out_keys = [x for x in reads_dict.keys() if x < start]
             
             for p in out_keys:
-                for x in reads_dict[p].itervalues():
-                    outsam.write(x)
+                for bundle in reads_dict[p].itervalues():
+                    yield bundle
                 del reads_dict[p]
                 del read_counts[p]
-
-
             
-            last_pos = read.pos
+            last_pos = start
             last_chr = read.tid
 
         if ignore_umi:
@@ -117,36 +233,41 @@ def dedup(insam, outsam, ignore_umi, subset):
         else:
             umi = read.qname.split("_")[-1]
 
-        if 'N' in read.cigarstring:
-            key = umi+"T"+str(read.is_reverse)+str(read.tlen)
-        else:
-            key = umi+"F"+str(read.is_reverse)+str(read.tlen)
+        key = (read.is_reverse, spliced & is_spliced, paired*read.tlen)
 
         try:
-            if reads_dict[pos][key].mapq > read.mapq:
-                continue
+            reads_dict[pos][key][umi]["count"] += 1
         except KeyError:
-            reads_dict[pos][key] = read
-            read_counts[pos][key] = 0
+            reads_dict[pos][key][umi]["read"] = read
+            reads_dict[pos][key][umi]["count"] = 1
+            read_counts[pos][key][umi] = 0
         else:
-            if reads_dict[pos][key].mapq < read.mapq:
-                reads_dict[pos][key] = read
-                read_counts[pos][key] = 0
+            if reads_dict[pos][key][umi]["read"].mapq > read.mapq:
+                continue
+                
+            if reads_dict[pos][key][umi]["read"].mapq < read.mapq:
+                reads_dict[pos][key][umi]["read"] = read
+                read_counts[pos][key][umi] = 0
                 continue
 
-            if reads_dict[pos][key].opt("NH") < read.opt("NH"):
+            if reads_dict[pos][key][umi]["read"].opt("NH") < read.opt("NH"):
                 continue
-            elif reads_dict[pos][key].opt("NH") > read.opt("NH"):
-                reads_dict[pos][key] = read
-                read_counts[pos][key] = 0
+            elif reads_dict[pos][key][umi]["read"].opt("NH") > read.opt("NH"):
+                reads_dict[pos][key][umi]["read"] = read
+                read_counts[pos][key][umi] = 0
 
-            read_counts[pos][key] += 1
-            prob = 1.0/read_counts[pos][key]
+            read_counts[pos][key][umi] += 1
+            prob = 1.0/read_counts[pos][key][umi]
 
             if random.random() < prob:
-                reads_dict[pos][key] = read
+                reads_dict[pos][key][umi]["read"] = read
 
-     
+    #yeild remaining bundles
+#    for p in reads_dict:
+#                for bundle in reads_dict[p].itervalues():
+#                    yield bundle
+               
+
 def main(argv=None):
     """script main.
 
@@ -170,6 +291,30 @@ def main(argv=None):
     parser.add_option("--subset", dest="subset", type="string",
                       help="Use only a fraction of reads, specified by subset",
                       default=1.1)
+    parser.add_option("--spliced-is-unique", dest="spliced",
+                      action="store_true",
+                      help="Treat a spliced read as different to an unspliced"
+                           " one",
+                      default=False)
+    parser.add_option("--soft-clip-threshold", dest="soft",
+                      type="float",
+                      help="number of bases clipped from 5' end before"
+                           "read os counted as spliced",
+                      default=4)
+    parser.add_option("--cluster-umis", dest="cluster_umis",
+                      action="store_true",
+                      help="Select best reads by clustering umis and removing"
+                           "potential sequencing errors", default=False)
+    parser.add_option("--edit-distance-theshold", dest="threshold",
+                      type="int",
+                      help="Edit distance theshold at which to join two UMIs"
+                           "when clustering", default=1)
+    parser.add_option("--chrom", dest="chrom", type="string",
+                      help="Restrict to one chromosome",
+                      default=None)
+    parser.add_option("--paired", dest="paired", action="store_true",
+                      default=False,
+                      help="Use second-in-pair position when deduping")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -200,8 +345,34 @@ def main(argv=None):
     outfile = pysam.Samfile(out_name, out_mode,
                             template=infile)
 
-    dedup(infile, outfile, options.ignore_umi, subset=float(options.subset))
-        
+    nInput, nOutput = 0, 0
+
+    for bundle in get_bundles(infile,
+                              ignore_umi=options.ignore_umi,
+                              subset=float(options.subset),
+                              paired=options.paired,
+                              chrom=options.chrom,
+                              spliced=options.spliced,
+                              soft_clip_threshold=options.soft):
+
+      
+        nOutput +=1
+        nInput += sum([bundle[umi]["count"] for umi in bundle])
+
+        if nOutput % 10000 == 0:
+            E.debug("Outputted %i" % nOutput)
+
+        if nInput % 1000000 == 0:
+            E.debug("Read %i input reads" % nInput)
+
+        if options.ignore_umi or not options.cluster_umis:
+            for umi in bundle:
+         
+                outfile.write(bundle[umi]["read"])
+        else:
+            for read in cluster_and_reduce(bundle, options.threshold):
+                outfile.write(read)
+
     # write footer and output benchmark information.
     E.Stop()
 
