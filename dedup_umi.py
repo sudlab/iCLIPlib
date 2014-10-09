@@ -215,9 +215,9 @@ def get_bundles(insam, ignore_umi=False, subset=None, paired=False,
                  read.cigar[-1][1] > soft_clip_threshold)):
                 is_spliced = True
 
-        if start > last_pos and not read.tid == last_chr:
+        if start > (last_pos+1000) and not read.tid == last_chr:
 
-            out_keys = [x for x in reads_dict.keys() if x < start]
+            out_keys = [x for x in reads_dict.keys() if x <= start-1000]
             
             for p in out_keys:
                 for bundle in reads_dict[p].itervalues():
@@ -267,7 +267,7 @@ def get_bundles(insam, ignore_umi=False, subset=None, paired=False,
 #                for bundle in reads_dict[p].itervalues():
 #                    yield bundle
                
-
+@profile
 def main(argv=None):
     """script main.
 
