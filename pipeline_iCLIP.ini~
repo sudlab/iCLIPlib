@@ -55,9 +55,6 @@ bowtie_memory=1.9G
 [experiment]
 input=FlipIn
 
-[dedup]
-options = --cluster-umi
-
 [clusters]
 fdr=
 window_size=15

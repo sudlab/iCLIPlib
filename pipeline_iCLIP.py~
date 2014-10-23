@@ -553,7 +553,6 @@ def dedup_alignments(infile, outfile):
     outfile = P.snip(outfile, ".bam")
 
     statement = ''' python %(project_src)s/dedup_umi.py
-                    %(dedup_options)s
                     -I %(infile)s
                     -S %(outfile)s.tmp.bam
                     -L %(outfile)s.log;
@@ -689,7 +688,6 @@ def subsetForSaturationAnalysis(infile, outfiles):
     statements = []
     statement_template = '''
                             python %%(project_src)s/dedup_umi.py
-                              %%(dedup_options)s
                               -I %(infile)s
                               -L %(outfile)s.log
                               -S %(outfile)s.tmp.bam
