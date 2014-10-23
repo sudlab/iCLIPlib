@@ -12,13 +12,20 @@ Purpose
 
 The perpose of this script is to deduplicate BAM files based
 on the first mapping co-ordinate and the UMI attached to the read.
-It is assumed that the FASTQ files were processed with extract_UMI.py
-and thus the UMI is the last word of the read name.
+It is assumed that the FASTQ files were processed with extract_umi.py
+before mapping and thus the UMI is the last word of the read name.
 
-Two reads that have the same start co-ordinate and the same UMI and the same
-splicing are assumed to be PCR duplicates.
+By default, reads are considered identical if they have the same start
+co-ordinate are on the same strand and have the same UMI. Optionally,
+splicing status can be considered and reads with similar UMIs can be
+removed to account for errors in sequencing (see below).
 
-The following criteria are applied to select the read that will be retained:
+The start postion of a read is considered to be the start of its alignment
+minus any soft clipped bases. Hence a read aligned at position 100 with
+cigar 2S98M will be assumed to start at postion 98.
+
+The following criteria are applied to select the read that will be retained
+form a group of duplicated reads:
 
 1. The read with the lowest nubmer of hits
 2. The read with the highest mapping quality
@@ -34,12 +41,40 @@ The input file must be sorted.
 Options
 -------
 
-The script assumes that input and output are in BAM format. Use that
--i/--in-sam and -o/--out-sam options to specifiy that the input/output
-are SAM format.
+--cluster-umis, --edit-distance-theshold
+       Often when looking at reads mapping to a similar base, you will
+       find that the umis are more similar than you would expect. This
+       option causes the clustering of umis within a threshold edit
+       distance of each other, and then a search for the most common
+       umis that will explain the cluster.
 
-The option --subset can be used to randomly select subsets of the reads
-for futher processing.
+--spliced-is-unique
+       Causes two reads that start in the same position on the same
+       strand and having the same UMI to be considered unique if one is spliced
+       and the other is not. (Uses the 'N' cigar operation to test for
+       splicing)
+
+--soft-clip-threshold
+       Mappers that soft clip, will sometimes do so rather than mapping a
+       spliced read if there is only a small overhang over the exon
+       junction. By setting this option, you can treat reads with at least
+       this many bases soft-clipped at the 3' end as spliced.
+
+--paired
+       Use the template length as a criteria when deduping. Currently only
+       the first in pair read is output, although this might change.
+
+--subset
+      Only consider a fraction of the reads, chosen at random. This is useful
+      for doing saturation analyses.
+
+--chrom
+      Only consider a single chromosome.
+
+-i, --in-sam/-o, --out-sam
+      By default, inputs are assumed to be in BAM format and output are output
+      in BAM format. Use these options to specify the use of SAM format for
+      inputs or outputs.
 
 Usage
 -----
@@ -215,7 +250,7 @@ def get_bundles(insam, ignore_umi=False, subset=None, paired=False,
                  read.cigar[-1][1] > soft_clip_threshold)):
                 is_spliced = True
 
-        if start > (last_pos+1000) and not read.tid == last_chr:
+        if start > (last_pos+1000) or not read.tid == last_chr:
 
             out_keys = [x for x in reads_dict.keys() if x <= start-1000]
             
@@ -262,12 +297,11 @@ def get_bundles(insam, ignore_umi=False, subset=None, paired=False,
             if random.random() < prob:
                 reads_dict[pos][key][umi]["read"] = read
 
-    #yeild remaining bundles
-#    for p in reads_dict:
-#                for bundle in reads_dict[p].itervalues():
-#                    yield bundle
-               
-@profile
+    # yeild remaining bundles
+    for p in reads_dict:
+                for bundle in reads_dict[p].itervalues():
+                    yield bundle
+
 def main(argv=None):
     """script main.
 
@@ -355,7 +389,6 @@ def main(argv=None):
                               spliced=options.spliced,
                               soft_clip_threshold=options.soft):
 
-      
         nOutput +=1
         nInput += sum([bundle[umi]["count"] for umi in bundle])
 
