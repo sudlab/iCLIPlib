@@ -136,8 +136,8 @@ class TranscriptCoordInterconverter:
 
         # exon has not been found
        
-        raise ValueError("Position %i is not in transcript %s" %
-                         (pos, self.transcript_id))
+        raise ValueError("Position %i (%i relative) is not in transcript %s\n exons are %s" %
+                         (pos[i], relative_pos[i], self.transcript_id, self.genome_intervals))
 
     def transcript2genome(self, pos):
         ''' Convert transcript coodinate into genome coordinate,
@@ -146,8 +146,12 @@ class TranscriptCoordInterconverter:
         searched once, ensuring O(n) performance rather than
         O(nlogn)'''
     
-        if len(pos) == 0:
-            return np.array([])
+        try:
+            if len(pos) == 0:
+                return np.array([])
+        except TypeError:
+            pos = np.array([pos])
+
         # Converting a list is only efficient if the list is ordered
         # however want to be able to return list in the same order it
         # arrived, so remember the order and then sort.
@@ -155,12 +159,9 @@ class TranscriptCoordInterconverter:
         pos = np.sort(pos)
 
         # pre allocate results list for speed
-        try:
-            results = np.zeros(len(pos))
-        except TypeError:
-            pos = np.array([pos])
-            results = np.zeros(1)
-
+       
+        results = np.zeros(len(pos))
+        
         i = 0
         i_max = len(pos)
 
@@ -185,6 +186,36 @@ class TranscriptCoordInterconverter:
         # beyond the end of the transcript
         ValueError("Transcript postion %i outside of transcript %s" %
                    (pos[i], self.transcript_id))
+
+    def transcript_interval2genome_intervals(self, interval):
+        '''Take an interval in transcript coordinates and returns
+        a list of intervals in genome coordinates representing the
+        interval on the genome '''
+
+        outlist = []
+        for exon in self.transcript_intervals:
+            if interval[0] < exon[1]:
+                start = interval[0]
+                if interval[1] <= exon[1]:
+                    outlist.append((start, interval[1]))
+                    break
+                else:
+                    outlist.append((start, exon[1]))
+                    interval = (exon[1], interval[1])
+       
+        genome_list = [tuple(self.transcript2genome((x, y-1))) for
+                       x, y in outlist]
+        
+        # these intervals are zero based-closed. Need to make half open
+
+        if self.strand == "+":
+            genome_list = [(x, y+1) for x, y in genome_list]
+        else:
+            genome_list = [(y, x+1) for x, y in genome_list]
+
+        return sorted(genome_list)
+
+
 
     
 def getCrosslink(read):
@@ -288,10 +319,10 @@ def countChr(reads, chr_len, dtype = 'uint16'):
                "Sum of depths is not equal to number of "
                "reads counted, possibly dtype %s not large enough" % dtype)
     
-    E.debug("Counted %i truncated on positive strand, %i on negative"
-            % (counter.truncated_pos, counter.truncated_neg))
-    E.debug("and %i deletion reads on positive strand, %i on negative"
-            % (counter.deletion_pos, counter.deletion_neg))
+#    E.debug("Counted %i truncated on positive strand, %i on negative"
+#            % (counter.truncated_pos, counter.truncated_neg))
+#    E.debug("and %i deletion reads on positive strand, %i on negative"
+#            % (counter.deletion_pos, counter.deletion_neg))
     
     return (pos_depths, neg_depths, counter)
 
@@ -302,11 +333,19 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
     chr_len = bam.lengths[bam.gettid(contig)]
     exon_counts = []
     for exon in intervals:
-
-        reads = bam.fetch(reference=contig,
-                          start=exon[0],
-                          end=exon[1],
-                          reopen=False)
+        
+        # X-linked position is first base before read: need to pull back
+        # reads that might be one base out. Extra bases will be filtered out
+        # later.
+        try:
+            reads = bam.fetch(reference=contig,
+                              start=max(0,exon[0]-1),
+                              end=exon[1]+1)
+        except ValueError as e:
+            E.debug(e)
+            E.warning("Skipping intervals on contig %s as not present in bam"
+                      % contig)
+            return pd.Series()
 
         count_results = countChr(reads, chr_len, dtype)
 

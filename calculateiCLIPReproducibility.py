@@ -138,9 +138,18 @@ def main(argv=None):
             depths = depths.join(depth, how="outer")
             total_counter[sf] += counter
         
+        depths = depths.fillna(0)
+
         for sf in use_index:
         
-            E.debug("Max depth for %s is %i" % (args[sf], depths.iloc[:, sf].max()))
+            try:
+                E.debug("Max depth for %s is %i" % 
+                        (args[sf], int(depths.iloc[:, sf].max())))
+            except ValueError:
+                E.warn("Zero max depth for both")
+                continue
+
+
 
             if int(options.max_level) == 0:
                 n_max = int(depths.iloc[:, sf].max())

@@ -1,23 +1,47 @@
 
-from ProjectTracker import *
+from iCLIPTracker import *
 import numpy as np
 import scipy as sp
 from collections import OrderedDict
 
-class ContextStats(ProjectTracker):
+class ContextStats(iCLIPTracker):
 
-    # slices = ["mapping", "deduped"]
+    categories = {"antisense": "Long ncRNA",
+                  "intron": "Intron",
+                  "retained_intron": "Retained intron",
+                  "lincRNA": "Long ncRNA",
+                  "miRNA": "Small ncRNA",
+                  "miscRNA": "Other",
+                  "none": "Genomic",
+                  "nonsense_mediated_decay": "Other",
+                  "polymorphic_pseudogene": "Long ncRNA",
+                  "processed_pseudogene": "Long ncRNA",
+                  "processed_transcript": "Other",
+                  "protein_coding": "Protein coding exon",
+                  "pseudogene": "Long ncRNA",
+                  "rRNA": "Ribosomal RNA",
+                  "snoRNA": "Small ncRNA",
+                  "snRNA": "Small ncRNA",
+                  "unitary_pseudogene": "Long ncRNA",
+                  "unprocessed_pseudogene": "Long ncRNA"}
+
+#   slices = ["mapping", "deduped", "clusters"]
+    method = "deduped"
     def getTracks(self):
-        return self.getValues("SELECT DISTINCT track FROM deduped_context_stats")
+        return self.getValues("SELECT DISTINCT track FROM %(method)s_context_stats")
 
     def __call__(self, track, slice=None):
 
-        slice = "deduped"
         statement = ''' SELECT category, alignments
-                      FROM %(slice)s_context_stats
-                      WHERE track = '%(track)s' AND category !="total" '''
+                      FROM %(method)s_context_stats
+                      WHERE track = '%(track)s' AND category != 'total' '''
 
-        results = self.getDict(statement)
+        results = self.getDataFrame(statement)
+        results.category = [self.categories[x] if x in self.categories else "Other"
+                            for x in results.category]
+        results = results.groupby("category").sum()
+                            
+        results = results.groupby(level="category").sum().reset_index()
 
         return results
 
@@ -246,7 +270,7 @@ class PercentDemuxed(ProjectTracker):
     pattern = "(.+[^_])umi_stats"
 
     def __call__(self, track):
-
+        print "called with track %s" % track
         mapper = PARAMS["mappers"]
         statement = '''SELECT samples.track as sample,
                               (vm.reads_total +0.0)/sum(count) as demuxed
@@ -256,7 +280,7 @@ class PercentDemuxed(ProjectTracker):
                        ON samples.barcode = umi.Sample
                        INNER JOIN
                          mapping.view_mapping as vm
-                       ON vm.track = '%(track)s_' || samples.track || '.%(mapper)s'
+                       ON vm.track =  samples.track || '_%(track)s' || '.%(mapper)s'
                        GROUP BY Sample '''
 
         return self.getAll(statement)
@@ -599,4 +623,16 @@ class TotalMergedReads(ProjectTracker):
                        FROM mapping.view_mapping
                        WHERE track='merged_%(track)s.%(mapper)s' '''
 
+        return self.getDataFrame(statement)
+
+class SplicingIndex(iCLIPTracker):
+
+    def getTracks(self):
+        return self.getValues("SELECT track from splicing_index")
+
+    def __call__(self, track):
+
+        statement = '''SELECT (2*Exon_Exon+0.0)/(Exon_Intron + Intron_Exon) as SI
+                       FROM splicing_index
+                       WHERE track = '%(track)s' '''
         return self.getDataFrame(statement)

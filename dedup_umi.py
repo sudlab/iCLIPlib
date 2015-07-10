@@ -285,11 +285,14 @@ def get_bundles(insam, ignore_umi=False, subset=None, paired=False,
                 read_counts[pos][key][umi] = 0
                 continue
 
-            if reads_dict[pos][key][umi]["read"].opt("NH") < read.opt("NH"):
-                continue
-            elif reads_dict[pos][key][umi]["read"].opt("NH") > read.opt("NH"):
-                reads_dict[pos][key][umi]["read"] = read
-                read_counts[pos][key][umi] = 0
+            try:
+                if reads_dict[pos][key][umi]["read"].opt("NH") < read.opt("NH"):
+                    continue
+                elif reads_dict[pos][key][umi]["read"].opt("NH") > read.opt("NH"):
+                    reads_dict[pos][key][umi]["read"] = read
+                    read_counts[pos][key][umi] = 0
+            except KeyError:
+                pass
 
             read_counts[pos][key][umi] += 1
             prob = 1.0/read_counts[pos][key][umi]
@@ -371,7 +374,7 @@ def main(argv=None):
         in_mode = "rb"
 
     if options.out_sam:
-        out_mode = "w"
+        out_mode = "wh"
     else:
         out_mode = "wb"
 

@@ -4,6 +4,8 @@ Distribution of UMIs
 
 .. report:: Sample_QC.UMI_stats
    :render: r-ggplot
+   :layout: column-4
+   :display: png,png,50
    :statement: aes(x=sample,y=freq) + geom_violin() + scale_y_log10() + theme_bw() + theme(axis.text.x = element_text(angle = 90)) + geom_hline(yintercept=1/(4^5), lty=2)
 
    Distribution of UMIs
@@ -15,6 +17,8 @@ Reads Per Sample
 
 .. report:: Sample_QC.ReadsPerSample
    :render: r-ggplot
+   :layout: column-4
+   :display: png,png,50
    :statement: aes(y=total, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x,...) format(x,...,big.mark=",", scientific= F, trim = T)) + ylab("Reads")
 
    Number of reads for each barcode
@@ -22,6 +26,8 @@ Reads Per Sample
 
 .. report:: Sample_QC.PercentDemuxed
    :render: r-ggplot
+   :layout: column-4
+   :display: png,png,40
    :statement: aes(y=demuxed * 100, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x)) + ylab("Percent Passed Filter")
 
    Reads succesfully demuxed and filtered
@@ -29,6 +35,8 @@ Reads Per Sample
 
 .. report:: Sample_QC.PercentMapped
    :render: r-ggplot
+   :layout: column-4
+   :display: png,png,40
    :statement: aes(y=mapped * 100, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x), limits = c(0,100)) + ylab("Percent reads mapped")
 
    Percent Reads mapped
@@ -37,6 +45,8 @@ Reads Per Sample
 
 .. report:: Sample_QC.PercentDeDuped
    :render: r-ggplot
+   :layout: column-4
+   :display: png,png,40
    :statement: aes(y=p_unique * 100, x=sample) + geom_bar(stat="identity") + theme_bw() + theme(axis.text.x = element_text(angle=90)) + scale_y_continuous(labels = function(x) sprintf("%.0f%%",x)) + ylab("Percent reads unique")
 
    Percent of Reads Unique
@@ -115,14 +125,11 @@ Context Stats
 ---------------
 
 .. report:: Sample_QC.ContextStats
-   :render: pie-plot
-   :transform: pivot
-   :pivot-index: track
-   :pivot-column: slice
-   :pivot-value: alignments
-   :layout: column-4
+   :render: r-ggplot
+   :groupby: all
+   :statement: aes(x=track, y=alignments, fill=category) + geom_bar(position="fill", stat="identity") + coord_flip() + ylab("fractraction alignmnets") + scale_fill_brewer(type="qual",palette="Paired")
 
-   Mapping Contexts for deduped reads
+   Mapping Context for dediped reads
 
 
 .. report:: Sample_QC.ContextRepresentation
@@ -134,55 +141,18 @@ Context Stats
    Enrichments of contexted over expectation
 
 
-Reproducibility
-----------------
+Splicing Index
+------------------
 
-Reproducilbity measures the number of sites with at least n reads mapping to them in one replicate that have reads mapping to them in 1 or 2 of the other replicates as a fraction of the total number of sites with that depth in that replicate. 
+Splicing index is:
 
-.. report:: Sample_QC.Reproducibility
+.. math:: SI = \log_2\frac{2\sum N^{Exon-Exon}}{\sum N^{Exon-Intron} + N^{Intron-Exon}}
+
+only consitutative exons are used, and only reads that map exactly to both sides of the junction are counted.
+
+.. report:: Sample_QC.SplicingIndex
    :render: r-ggplot
    :groupby: all
-   :statement: aes(level, reproducibility, color=Replicate) + geom_line() + geom_point() + facet_grid(slice ~ track) + coord_cartesian(xlim=c(0,5)) + theme_bw()
-   :tf-label-level: 3
+   :statement: aes(x=track, y=log2(SI)) + geom_bar(stat="identity") + coord_flip() + xlab("Track") + ylab("Splicing index")
 
-   Reproduciblity
-
-
-The problem with the measure above (which is the one outlined in Sutomui et al) is that the largest rep will always have a lower reproducibility because all those extra locations can't possibly be replicated. Below I normalise the reproduciblility by the maximum possible level of reproduciblitity.
-
-.. report:: Sample_QC.NormReproducibility
-   :render: r-ggplot
-   :groupby: all
-   :statement: aes(level, reproducibility, color=Replicate) + geom_line() + geom_point() + facet_grid(slice ~ track) + coord_cartesian(xlim=c(0,5), ylim=c(0,1)) + theme_bw()
-   :tf-label-level: 3
-
-   Normalised Reproduciblity
-
-The next plot shows how reproducible cross-linked bases are in the control samples rather than in other replicates of the sample cell line. 
-
-.. report:: Sample_QC.ReproducibilityVsControl
-   :render: r-ggplot
-   :groupby: all
-   :slices: 1,3
-   :statement: aes(level,reproducibility,color=Replicate) + geom_line() + geom_point() + facet_grid(slice~track) + theme_bw() + coord_cartesian(xlim = c(0,25))
-   :tf-label-level: 3
-
-   Reproducibility vs. Controls
-
-
-Given that there is some reproducibility between one replicate and others pulling down the same factors and also some between that same replicate and the negative controls, how much infomation is there in the sample that is due to the correct pull down. Assuming that infomation shared between a sample and a control will also be shared by another replicate of the same pull down, the ratio of replicating bases between A) a replicate and a the control and B) one replicate and another should be above one, and the excess should speak to how much extra, factor specific information there is. 
-
-
-.. report:: Sample_QC.ReproducibilityReplicateVsControl
-   :render: r-ggplot
-   :groupby: all
-   :statement: aes(depth,ratio,color=Replicate) + geom_line() + geom_point() + facet_grid(slice~track) + scale_y_log10() + coord_cartesian(xlim=c(0,10)) + theme_bw()
-   :tf-label-level: 3
-   :slices: 1
-
-   Ratio of reproducibility in replicates of same factor to that in other factors.
-
-
-
-The reproducibility can also be used to calculate a distance metric between samples. The jaccard index is the interection of two sets divided by the union. By applying this accross each pair of samples at the 1 level we can build a clustering of samples.
-
+   Splicing index for each track

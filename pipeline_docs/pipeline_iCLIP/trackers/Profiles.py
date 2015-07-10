@@ -1,4 +1,4 @@
-from ProjectTracker import *
+from iCLIPTracker import *
 
 
 class TrackerImagesPlus(TrackerImages):
