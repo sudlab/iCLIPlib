@@ -183,20 +183,24 @@ def connect():
 def filterPhiX(infiles, outfile):
     ''' Use mapping to bowtie to remove any phiX mapping reads '''
 
-    job_options = "-pe dedicated %i -R y -l mem_free=%s" % (
-        PARAMS["phix_bowtie_threads"], PARAMS["phix_bowtie_memory"])
     infile, reffile = infiles
-    outfile = P.snip(outfile,".gz")
+    outfile = P.snip(outfile, ".gz")
+    bam_out = P.snip(infile, ".fastq.gz") + ".phix.bam"
+
+    job_threads = PARAMS["phix_bowtie_threads"]
+    job_memory = PARAMS["phix_bowtie_memory"]
+    options = PARAMS["phix_bowtie_options"] + " --un %s" % outfile
+    genome = PARAMS["phix_genome"]
+    bowtie_threads = PARAMS["phix_bowtie_threads"]
+
     m = PipelineMapping.Bowtie(executable=PARAMS["phix_bowtie_exe"],
                                strip_sequence=False,
-                               remove_non_unique=False)
-    genome = PARAMS["phix_genome"]
-    bowtie_options = PARAMS["phix_bowtie_options"] + \
-                     " --un %s" % outfile
-    bowtie_threads = PARAMS["phix_bowtie_threads"]
-    bam_out = P.snip(infile,".fastq.gz") + ".phix.bam"
-    statement = m.build((infile,),bam_out)
+                               remove_non_unique=False,
+                               tool_options=options)
+
+    statement = m.build((infile,), bam_out)
     statement += "checkpoint; gzip %(outfile)s"
+
     P.run()
 
 
@@ -421,7 +425,7 @@ def run_mapping(infiles, outfiles):
 ###################################################################
 @follows(run_mapping)
 @collate("mapping.dir/*.dir/*-*-*_*.bam",
-         regex("(.+)/(.+\-.+\-[^_]+)_(.+)\.([^.]+)\.bam"),
+         regex("(.+)/([^_]+\-.+\-[^_]+)_(.+)\.([^.]+)\.bam"),
          r"\1/merged_\2.\4.bam")
 def mergeBAMFiles(infiles, outfile):
     '''Merge reads from the same library, run on different lanes '''
@@ -461,7 +465,20 @@ def mapping_qc(infiles, outfile):
 
 ###################################################################
 @follows(mapping_qc)
-@transform("mapping.dir/geneset.dir/reference.gtf.gz",
+@originate("mapping.dir/geneset.dir/reference.gtf.gz")
+def buildReferenceGeneSet(outfile):
+    
+    to_cluster = False
+
+    statement = '''cd mapping.dir;
+                   nice python %(pipeline_dir)s/pipeline_mapping.py
+                        make buildReferenceGeneSet
+                        -v5 -p%(pipeline_mapping_jobs)s '''
+
+    P.run()
+
+###################################################################
+@transform(buildReferenceGeneSet,
            regex(".+/(.+).gtf.gz"),
            r"\1.context.bed.gz")
 def generateContextBed(infile, outfile):
@@ -559,8 +576,10 @@ def dedup_alignments(infile, outfile):
 
     outfile = P.snip(outfile, ".bam")
 
-    statement = ''' python %(project_src)s/dedup_umi.py
+    job_memory="7G"
+    statement = ''' python %(project_src)s/UMI-tools/dedup_umi.py
                     %(dedup_options)s
+                    --output-stats=%(outfile)s
                     -I %(infile)s
                     -S %(outfile)s.tmp.bam
                     -L %(outfile)s.log;
@@ -695,7 +714,7 @@ def subsetForSaturationAnalysis(infile, outfiles):
     infile = P.snip(infile, ".bai")
     statements = []
     statement_template = '''
-                            python %%(project_src)s/dedup_umi.py
+                            python %%(project_src)s/UMI-tools/dedup_umi.py
                               %%(dedup_options)s
                               -I %(infile)s
                               -L %(outfile)s.log
@@ -776,8 +795,7 @@ def loadContextStats(infiles, outfile):
 
 
 ###################################################################
-@follows(run_mapping)
-@transform("mapping.dir/geneset.dir/reference.gtf.gz",
+@transform(buildReferenceGeneSet,
            suffix(".gtf.gz"),
            ".flat.gtf.gz")
 def flattenGeneSet(infile, outfile):
@@ -1185,7 +1203,7 @@ def profiles():
 @follows(mkdir("clusters.dir"), mapping_qc)
 @split(dedup_alignments,
        regex(".+/(.+).bam"),
-       add_inputs("mapping.dir/geneset.dir/reference.gtf.gz"),
+       add_inputs(buildReferenceGeneSet),
        [r"clusters.dir/\1.bg.gz",
         r"clusters.dir/\1.bed.gz"])
 def callSignificantClusters(infiles, outfiles):
@@ -1319,7 +1337,7 @@ def clusters2fasta(infile, outfile):
 
 
 ###################################################################
-@transform("mapping.dir/geneset.dir/reference.gtf.gz",
+@transform(buildReferenceGeneSet,
             suffix(".gtf.gz"),
             ".fa.gz")
 def getReferenceGenesetFasta(infile, outfile):
@@ -1428,8 +1446,34 @@ def motifs():
 ###################################################################
 # Data Export
 ###################################################################
+@collate(dedup_alignments,
+         regex("(.+\-.+)\-(.+).bam"),
+         r"\1.union.bam")
+def makeUnionBams(infiles, outfile):
+    '''Merge replicates together'''
+
+    outfile = os.path.abspath(outfile)
+
+    if len(infiles) == 1:
+        statement = '''ln -sf %(infiles)s %(outfile)s;
+                       checkout;
+ 
+                       ln -sf %(infiles)s.bai %(outfile)s.bai;'''
+    else:
+
+        statement = ''' samtools merge %(outfile)s %(infiles)s;
+                        checkpoint;
+
+                        samtools index %(outfile)s'''
+
+    infiles = " ".join(infiles)
+
+    P.run()
+
 @follows(mkdir("bigWig"))
-@subdivide(dedup_alignments, regex(".+/(.+).bam"),
+@subdivide([dedup_alignments,
+            makeUnionBams], 
+           regex(".+/(.+).bam"),
           [r"bigWig/\1_plus.bw",
            r"bigWig/\1_minus.bw"])
 def generateBigWigs(infile, outfiles):
@@ -1489,7 +1533,7 @@ def generateBigWigUCSCFile(infiles, outfile):
     stanzas = {}
     for infile in infiles:
         track, strand = re.match(
-            ".+/(.+-.+-.+)_(plus|minus).bw", infile).groups()
+            ".+/(.+-.+)_(plus|minus).bw", infile).groups()
 
         negate = ""
 

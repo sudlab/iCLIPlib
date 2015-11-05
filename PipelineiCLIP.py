@@ -3,7 +3,7 @@ import CGAT.IOTools as IOTools
 import CGATPipelines.Pipeline as P
 import CGAT.FastaIterator as FastaIterator
 import CGAT.Experiment as E
-import CGATPipelines.PipelineUtilities as PUtils
+#import CGATPipelines.PipelineUtilities as PUtils
 from CGATPipelines.Pipeline import cluster_runnable
 import pandas
 import os
