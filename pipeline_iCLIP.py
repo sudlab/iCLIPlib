@@ -109,7 +109,6 @@ import sqlite3
 import CGAT.Experiment as E
 import CGAT.IOTools as IOTools
 import CGAT.Database as Database
-import CGATPipelines.PipelineUtilities as PUtils
 import CGATPipelines.PipelineMapping as PipelineMapping
 import CGATPipelines.PipelineMotifs as PipelineMotifs
 import CGATPipelines.PipelineRnaseq as PipelineRnaseq
@@ -259,7 +258,7 @@ def generateReaperMetaData(infile, outfile):
             outlines.append([barcode, adaptor_3prime, adaptor_5prime, "-"])
 
     header = ["barcode", "3p-ad", "tabu", "5p-si"]
-    PUtils.write(outfile, outlines, header)
+    PUtils.writeLines(outfile, outlines, header)
 
 
 ###################################################################
