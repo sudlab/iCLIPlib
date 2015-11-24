@@ -375,3 +375,90 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
     # transcript_counts = transcript_counts.sort_index()
     return transcript_counts
         
+def calcAverageDistance(profile1, profile2):
+    ''' This function calculates the average distance of all
+    pairwise distances in two profiles'''
+
+    def _cartesian(x, y):
+        return np.transpose([np.tile(x, len(y)), np.repeat(y, len(x))])
+
+    positions = _cartesian(profile1.index.values, profile2.index.values)
+    counts = _cartesian(profile1.values, profile2.values)
+    counts = np.prod(counts, axis=1)
+    distances = np.abs(positions[:, 0] - positions[:, 1])
+    mean_distance = (distances.astype("float64") * counts).sum() / np.sum(counts)
+
+    return mean_distance
+
+
+def findMinDistance(profile1, profile2):
+    '''Finds mean distance between each read in profile1
+    and a read in profile2'''
+
+    locations1 = profile1.index.values
+
+    locations2 = profile2.index.values # .astype("int16")
+
+    mat1 = np.repeat(locations1, locations2.size).reshape(
+        (locations1.size, locations2.size))
+    mat2 = np.tile(locations2, locations1.size).reshape(
+        (locations1.size, locations2.size))
+
+    distances = np.abs(mat1-mat2).min(axis=1)
+
+    return distances.mean()
+
+def randomiseSites(profile, start, end, keep_dist=True):
+    '''Randomise clipped sites within an interval (between start and end)
+    if keep_dist is true, then reads on the same base are kept togehter'''
+
+    if keep_dist:
+
+        profile = profile.copy()
+        profile.index = np.random.choice(
+            np.arange(start, end), profile.size, replace=False)
+        profile = profile.sort_index()
+        return profile
+
+    else:
+        randomised = np.random.choice(
+            np.arange(start, end), profile.sum(), replace=True)
+        randomised = pd.Series(randomised).value_counts().sort_index()
+        return randomised
+
+def spread(profile, bases, reindex=True):
+   
+    start = int(profile.index[0] - 2*bases)
+    end = int(profile.index[-1] + 2*bases+1)
+    
+    if reindex:
+        profile = profile.reindex(range(start, end))
+        profile = profile.fillna(0)
+
+    return pd.rolling_sum(profile, window=2*bases+1, center=True).dropna()
+
+def corr_profile(profile1, profile2, nspread, profile2_ready=False):
+    
+    profile1 = profile1.reindex(
+                    range(int(profile1.index.values.min())-1,
+                          int(profile1.index.values.max())+1)).fillna(0)
+    profile1 = spread(profile1,nspread, False)
+        
+    if not profile2_ready:
+       profile2 = profile2.reindex(
+                       range(int(profile2.index.values.min()),
+                             int(profile2.index.values.max()))).fillna(0)
+       profile2 = spread(profile2, nspread, False)
+        
+    return profile1.corr(profile2, method="spearman")
+
+def rand_apply(profile, exon, n, func, keep_dist=False, *args, **kwargs):
+    dummy = pd.Series(range(n))
+    def _inner_func(x):
+        rand = randomiseSites(profile, exon.start, exon.end,
+                                    keep_dist=keep_dist)
+        return func(rand, *args, **kwargs)
+    return dummy.apply(_inner_func)
+
+
+

@@ -258,7 +258,7 @@ def generateReaperMetaData(infile, outfile):
             outlines.append([barcode, adaptor_3prime, adaptor_5prime, "-"])
 
     header = ["barcode", "3p-ad", "tabu", "5p-si"]
-    PUtils.writeLines(outfile, outlines, header)
+    IOTools.writeLines(outfile, outlines, header)
 
 
 ###################################################################
