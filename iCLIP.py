@@ -308,9 +308,16 @@ def countChr(reads, chr_len, dtype = 'uint16'):
         else:
             pos_depths[float(pos)] += 1
 
-    pos_depths = pd.Series(pos_depths, dtype=dtype)
-    neg_depths = pd.Series(neg_depths, dtype=dtype)
+    try:
+        pos_depths = pd.Series(pos_depths, dtype=dtype)
+    except ValueError:
+        pos_depths = pd.Series({}, dtype=dtype)
 
+    try:
+        neg_depths = pd.Series(neg_depths, dtype=dtype)
+    except ValueError:
+        neg_depths = pd.Series({}, dtype=dtype)
+ 
     # check for integer overflow: counter sum should add up to array sum
     counter_sum = sum([y for x, y in counter.iteritems()])
     array_sum = pos_depths.sum() + neg_depths.sum()
