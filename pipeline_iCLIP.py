@@ -133,8 +133,6 @@ PARAMS_ANNOTATIONS = P.peekParameters( PARAMS["annotations_dir"],
 PipelineMotifs.PARAMS = PARAMS
 PipelineiCLIP.PARAMS = PARAMS
 
-PARAMS["pipeline_dir"] = os.path.dirname(P.__file__)
-
 ###################################################################
 ###################################################################
 ## Helper functions mapping tracks to conditions, etc
@@ -263,7 +261,7 @@ def generateReaperMetaData(infile, outfile):
 
 ###################################################################
 @follows(loadUMIStats, generateReaperMetaData)
-@split(extractUMI, regex(".+/(.+).fastq.umi_trimmed.gz"),
+@subdivide(extractUMI, regex(".+/(.+).fastq.umi_trimmed.gz"),
        add_inputs(r"\1_reaper_metadata.tsv", "sample_table.tsv"),
        r"demux_fq/*_\1.fastq*gz")
 def demux_fastq(infiles, outfiles):
@@ -414,7 +412,7 @@ def run_mapping(infiles, outfiles):
     statement = ''' ln -f pipeline.ini mapping.dir/pipeline.ini;
                     checkpoint;
                     cd mapping.dir;
-                    nice python %(pipeline_dir)s/pipeline_mapping.py
+                    nice python %(pipelinedir)s/pipeline_mapping.py
                     make mapping
                     -v5 -p%(pipeline_mapping_jobs)s  '''
 
@@ -455,7 +453,7 @@ def mapping_qc(infiles, outfile):
     to_cluster = False
 
     statement = '''cd mapping.dir;
-                   nice python %(pipeline_dir)s/pipeline_mapping.py
+                   nice python %(pipelinedir)s/pipeline_mapping.py
                    make qc -v5 -p%(pipeline_mapping_jobs)s '''
     P.run()
 
@@ -470,7 +468,7 @@ def buildReferenceGeneSet(outfile):
     to_cluster = False
 
     statement = '''cd mapping.dir;
-                   nice python %(pipeline_dir)s/pipeline_mapping.py
+                   nice python %(pipelinedir)s/pipeline_mapping.py
                         make buildReferenceGeneSet
                         -v5 -p%(pipeline_mapping_jobs)s '''
 
@@ -488,7 +486,7 @@ def generateContextBed(infile, outfile):
     statement = ''' zcat %(infile)s
                   | python %(scripts_dir)s/gtf2gtf.py
                     --method=exons2introns
-                    --with-utr
+                    
                      -L %(outfile)s.log
                   | awk 'BEGIN{FS="\\t";OFS="\\t"} {$2="intron"; print}'
                   | gzip > %(outfile)s.tmp.gtf.gz;
@@ -699,7 +697,7 @@ def loadDedupedUMIStats(infiles, outfile):
 
 ###################################################################
 @follows(mkdir("saturation.dir"), run_mapping)
-@split(indexMergedBAMs, regex(".+/merged_(.+)\.[^\.]+\.bam.bai"),
+@subdivide(indexMergedBAMs, regex(".+/merged_(.+)\.[^\.]+\.bam.bai"),
        [r"saturation.dir/\1.%.3f.bam" % (1.0/(2 ** x))
         for x in range(1, 6)] +
        [r"saturation.dir/\1.%.3f.bam" % (x/10.0)
@@ -1200,7 +1198,7 @@ def profiles():
 # Calling significant clusters
 ###################################################################
 @follows(mkdir("clusters.dir"), mapping_qc)
-@split(dedup_alignments,
+@subdivide(dedup_alignments,
        regex(".+/(.+).bam"),
        add_inputs(buildReferenceGeneSet),
        [r"clusters.dir/\1.bg.gz",
@@ -1347,7 +1345,6 @@ def getReferenceGenesetFasta(infile, outfile):
 
     statement = '''python %(scriptsdir)s/gtf2gtf.py
                            --method=merge-transcripts
-                           --with-utr
                             -I %(infile)s -L %(logfile)s
                  | python %(scriptsdir)s/gff2bed.py 
                             -L %(logfile)s
@@ -1664,7 +1661,7 @@ def update_report():
 
     E.info("Updating Mapping Reported")
     statement = '''cd mapping.dir;
-                   python %(pipeline_dir)s/pipeline_mapping.py
+                   python %(pipelinedir)s/pipeline_mapping.py
                    -v5 -p1 make update_report '''
     E.info("updating report")
     P.run_report(clean=False)

@@ -89,10 +89,10 @@ def callClusters(bamfile, gtffile, outfiles,
 
     
     job_options = "-l mem_free=10G"
-    statement = '''python %(scriptsdir)s/gtf2gtf.py -L %(logfile)s.log --with-utr
+    statement = '''python %(scriptsdir)s/gtf2gtf.py -L %(logfile)s.log
                            -I %(gtffile)s
                           --method=sort --sort-order=gene+transcript
-                 | python %(scriptsdir)s/gtf2gtf.py -L %(logfile)s.log --with-utr
+                 | python %(scriptsdir)s/gtf2gtf.py -L %(logfile)s.log 
                           --method=set-transcript-to-gene
                  | python %(project_src)s/find_significant_bases.py
                    %(bamfile)s
