@@ -38,19 +38,43 @@ Overview
 Usage
 =====
 
-See :ref:`PipelineSettingUp` and :ref:`PipelineRunning` on general information how to use CGAT pipelines.
+See :ref:`PipelineSettingUp` and :ref:`PipelineRunning` on general information how to use
+CGAT pipelines.
 
 Configuration
 -------------
 
-The pipeline requires a configured :file:`pipeline.ini` file. 
+The pipeline requires a configured :file:`pipeline.ini` file.
 
-The sphinxreport report requires a :file:`conf.py` and :file:`sphinxreport.ini` file 
-(see :ref:`PipelineDocumenation`). To start with, use the files supplied with the
-:ref:`Example` data.
+The sphinxreport report requires a :file:`conf.py` and :file:`sphinxreport.ini`
+file  (see :ref:`PipelineDocumenation`). To start with, use the files supplied
+with the :ref:`Example` data.
 
 Input
 -----
+
+The inputs should be a fastq file. The pipeline expects these to be raw fastq
+files. That is that they contain the UMIs and the barcodes still on the 5' end
+of the reads. It is expected that these will not be demultiplexed, although
+demultiplex fastqs will also work.
+
+In addition to the fastq files, a table of barcodes and samples is required as
+sample_table.tsv.
+
+It has four columns:
+
+The first contains the barcode including UMI bases, marked as Xs.
+The second contains the barcode sequence without the UMI bases.
+The third contains the sample name you'd like to use
+The fourth contains the fastq files that contain reads from this sample
+
+e.g.
+
+NNNGGTTNN	GGTT	FlipIn-FLAG-R1	hiseq7,hiseq8,miseq
+
+Means that the sample FlipIn-FLAG-R1 should have reads in the fastq files
+hiseq7, hiseq8 and miseq, is marked by the barcode GGTT and is embeded in the
+UMI as NNNGGTTNN.
 
 Optional inputs
 +++++++++++++++
@@ -67,27 +91,43 @@ path:
 +--------------------+-------------------+------------------------------------------------+
 |*Program*           |*Version*          |*Purpose*                                       |
 +--------------------+-------------------+------------------------------------------------+
-|reaper              |                   |Used for demuxing and clipping reads            |
+|CGAPipelines        |                   |Pipelining infrastructure, mapping pipeline     |
++--------------------+-------------------+------------------------------------------------+
+|CGAT                | >=0.2.4           |Various                                         |
++--------------------+-------------------+------------------------------------------------+
+|Bowtie              | >=1.1.2           |Filtering out PhiX reads                        |
++--------------------+-------------------+------------------------------------------------+
+|FastQC              | >=0.11.2          |Quality Control of demuxed reads                |
++--------------------+-------------------+------------------------------------------------+
+|STAR or HiSat       |                   |Spliced mapping of reads                        |
++--------------------+-------------------+------------------------------------------------+
+|bedtools            |                   |Interval manipulation                           |
++--------------------+-------------------+------------------------------------------------+
+|samtools            |                   |Read manipulation                               |
++--------------------+-------------------+------------------------------------------------+
+|subread             |                   |FeatureCounts read quantifiacation              |
++--------------------+-------------------+------------------------------------------------+
+|MEME                |>=4.9.1            |Motif finding                                   |
++--------------------+-------------------+------------------------------------------------+
+|DREME               |>=4.9.1            |Motif finding                                   |
++--------------------+-------------------+------------------------------------------------+
+|bedGraphToBigWig    |                   |Converstion of results to BigWig                |
++--------------------+-------------------+------------------------------------------------+
+|reaper              | 13-100            |Used for demuxing and clipping reads            |
 +--------------------+-------------------+------------------------------------------------+
 
 Pipeline output
 ===============
 
-The major output is in the database file :file:`csvdb`.
+As well as the report, clusters, as BED files are in the clusters.dir directory,
+and traces as bigWig files are in the bigwig directory. Both of these are exported
+as a UCSU genome browser track hub in the export directory. 
 
 Example
 =======
 
-Example data is available at http://www.cgat.org/~andreas/sample_data/pipeline_iCLIP.tgz.
-To run the example, simply unpack and untar::
+Example data and configuration is avaiable in example_data.tar.gz
 
-   wget http://www.cgat.org/~andreas/sample_data/pipeline_iCLIP.tgz
-   tar -xvzf pipeline_iCLIP.tgz
-   cd pipeline_iCLIP
-   python <srcdir>/pipeline_iCLIP.py make full
-
-.. note:: 
-   For the pipeline to run, install the :doc:`pipeline_annotations` as well.
 
 Glossary
 ========
@@ -215,7 +255,7 @@ def extractUMI(infile, outfile):
     name to allow later deconvolving of PCR duplicates '''
 
     statement=''' zcat %(infile)s
-                | python %(project_src)s/extract_umi.py
+                | python %(project_src)s/UMI-tools/extract_umi.py
                         --bc-pattern=%(reads_bc_pattern)s
                         -L %(outfile)s.log
                 | gzip > %(outfile)s '''
