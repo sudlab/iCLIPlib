@@ -794,7 +794,7 @@ def loadSubsetBamStats(infiles, outfile):
 
 
 ###################################################################
-@transform([indexMergedBAMs, dedup_alignments, subsetForSaturationAnalysis],
+@transform([indexMergedBAMs, dedup_alignments],
            regex("(?:merged_)?(.+).bam(?:.bai)?"),
            add_inputs(generateContextBed),
            r"\1.reference_context.tsv")
@@ -875,7 +875,7 @@ def loadSplicingIndex(infiles, outfile):
 
 ###################################################################
 @follows(loadContextStats,
-         loadSubsetBamStats,
+         
          loadDedupedBamStats,
          loadFragLengths,
          loadNspliced,
@@ -1491,10 +1491,11 @@ def makeUnionBams(infiles, outfile):
     outfile = os.path.abspath(outfile)
 
     if len(infiles) == 1:
-        statement = '''ln -sf %(infiles)s %(outfile)s;
+        infile = os.path.abspath(infiles[0])
+        statement = '''ln -sf %(infile)s %(outfile)s;
                        checkout;
  
-                       ln -sf %(infiles)s.bai %(outfile)s.bai;'''
+                       ln -sf %(infile)s.bai %(outfile)s.bai;'''
     else:
 
         statement = ''' samtools merge %(outfile)s %(infiles)s;
