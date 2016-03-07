@@ -97,7 +97,7 @@ def main(argv=None):
     (options, args) = E.Start(parser, argv=argv)
 
     samfiles = [pysam.Samfile(fn, 'rb') for fn in args]
-    total_counter = [E.Counter() for samfile in samfiles]
+#    total_counter = [E.Counter() for samfile in samfiles]
     running_totals = {sf: [collections.defaultdict(int)
                            for x in range(len(args) - 1)]
                       for sf in args}
@@ -136,7 +136,7 @@ def main(argv=None):
             depth.name = args[sf]
             
             depths = depths.join(depth, how="outer")
-            total_counter[sf] += counter
+#            total_counter[sf] += counter
         
         depths = depths.fillna(0)
 

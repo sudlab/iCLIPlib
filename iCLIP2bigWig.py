@@ -130,10 +130,10 @@ def main(argv=None):
         del neg_depth
         neg_depth_sorted = -1*neg_depth_sorted
 
-        E.debug("Counted %i truncated on positive strand, %i on negative"
-                % (counter.truncated_pos, counter.truncated_neg))
-        E.debug("and %i deletion reads on positive strand, %i on negative"
-                % (counter.deletion_pos, counter.deletion_neg))
+#        E.debug("Counted %i truncated on positive strand, %i on negative"
+#                % (counter.truncated_pos, counter.truncated_neg))
+#        E.debug("and %i deletion reads on positive strand, %i on negative"
+#                % (counter.deletion_pos, counter.deletion_neg))
 
         # output to temporary wig file
         outputToWig(pos_depth_sorted, chrom, plus_wig)

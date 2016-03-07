@@ -466,12 +466,12 @@ def spread(profile, bases, reindex=True, right_bases=None):
     if right_bases:
         window = bases+right_bases
     else:
-        window = 2*bases
+        window = 2*bases  + 1
         right_bases = bases
 
     if reindex:
-        start = int(profile.index[0] - window)
-        end = int(profile.index[-1] + window+1)
+        start = int(profile.index.min() - window)
+        end = int(profile.index.max() + window+1)
         profile = profile.reindex(np.arange(start, end), fill_value=0)
 
     result = pd.rolling_sum(profile, window=window, center=False).dropna()

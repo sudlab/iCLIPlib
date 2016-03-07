@@ -172,6 +172,7 @@ PARAMS_ANNOTATIONS = P.peekParameters( PARAMS["annotations_dir"],
 
 PipelineMotifs.PARAMS = PARAMS
 PipelineiCLIP.PARAMS = PARAMS
+PipelineiCLIP.PARAMS_ANNOTATIONS = PARAMS_ANNOTATIONS
 
 ###################################################################
 ###################################################################
@@ -310,13 +311,14 @@ def demux_fastq(infiles, outfiles):
 
     infile, meta, samples = infiles
     track = re.match(".+/(.+).fastq.umi_trimmed.gz", infile).groups()[0]
-
+    
     statement = '''reaper -geom 5p-bc
                           -meta %(meta)s
                           -i <( zcat %(infile)s | sed 's/ /_/g')
                           --noqc
+                          %(reads_reaper_options)s
                           -basename demux_fq/%(track)s_
-                          -clean-length 15 > %(track)s_reapear.log;
+                          -clean-length %(reads_min_length)s > %(track)s_reapear.log;
                    checkpoint;
                    rename _. _ demux_fq/*clean.gz;
                  '''
@@ -469,6 +471,7 @@ def mergeBAMFiles(infiles, outfile):
 
     if len(infiles) == 1:
         P.clone(infiles[0], outfile)
+        P.clone(infiles[0]+".bai", outfile+".bai")
         return
 
     infiles = " ".join(infiles)
@@ -514,16 +517,20 @@ def buildReferenceGeneSet(outfile):
 
     P.run()
 
+
 ###################################################################
-@transform(buildReferenceGeneSet,
+@transform(os.path.join(PARAMS["annotations_dir"],
+                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
            regex(".+/(.+).gtf.gz"),
            r"\1.context.bed.gz")
 def generateContextBed(infile, outfile):
     ''' Generate full length primary transcript annotations to count
     mapping contexts '''
 
-    genome = os.path.join(PARAMS["annotations_dir"], "contigs.tsv")
+    genome = os.path.join(PARAMS["annotations_dir"],
+                          PARAMS_ANNOTATIONS["interface_contigs"])
     statement = ''' zcat %(infile)s
+                  | awk '$3=="exon"'
                   | python %(scripts_dir)s/gtf2gtf.py
                     --method=exons2introns
                     
@@ -533,7 +540,8 @@ def generateContextBed(infile, outfile):
 
                   checkpoint;
 
-                  zcat %(infile)s %(outfile)s.tmp.gtf.gz           
+                  zcat %(infile)s %(outfile)s.tmp.gtf.gz
+                  | awk '$3=="exon" || $3=="intron"'
                   | python %(scripts_dir)s/gff2bed.py
                     --set-name=source
                      -L %(outfile)s.log
@@ -832,9 +840,10 @@ def loadContextStats(infiles, outfile):
 
 
 ###################################################################
-@transform(buildReferenceGeneSet,
-           suffix(".gtf.gz"),
-           ".flat.gtf.gz")
+@transform(os.path.join(PARAMS["annotations_dir"],
+                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
+           regex(".+/(.+).gtf.gz"),
+           r"\1.flat.gtf.gz")
 def flattenGeneSet(infile, outfile):
     ''' Get gtf with geneset flattened so that introns are definately
     intron sequence '''
@@ -1024,7 +1033,8 @@ def reproducibility():
 ###################################################################
 @follows(mkdir("counts.dir"))
 @transform(dedup_alignments, regex(".+/(.+).bam"),
-           add_inputs("mapping.dir/geneset.dir/refcoding.gtf.gz"),
+           add_inputs(os.path.join(PARAMS["annotations_dir"],
+                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
            r"counts.dir/\1.tsv.gz")
 def countReadsOverGenes(infiles, outfile):
     ''' use feature counts to quantify the number of tags on each gene'''
@@ -1069,9 +1079,10 @@ def loadCounts(infile, outfile):
 ###################################################################
 # Analysis
 ###################################################################
-@follows(mkdir("gene_profiles.dir"), mapping_qc)
+@follows(mkdir("gene_profiles.dir"))
 @transform(dedup_alignments, regex(".+/(.+).bam"),
-           add_inputs("mapping.dir/geneset.dir/refcoding.gtf.gz"),
+           add_inputs(os.path.join(PARAMS["annotations_dir"],
+                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
            r"gene_profiles.dir/\1.tsv")
 def calculateGeneProfiles(infiles, outfile):
     ''' Calculate metagene profiles over protein coding genes
@@ -1105,7 +1116,8 @@ def loadGeneProfiles(infiles, outfile):
 
 ###################################################################
 @follows(mapping_qc)
-@transform("mapping.dir/geneset.dir/refcoding.gtf.gz",
+@transform(os.path.join(PARAMS["annotations_dir"],
+                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
            suffix(".gtf.gz"),
            ".exons.gtf.gz")
 def transcripts2Exons(infile, outfile):
@@ -1132,7 +1144,8 @@ def transcripts2Exons(infile, outfile):
 
 ###################################################################
 @follows(mapping_qc)
-@transform("mapping.dir/geneset.dir/refcoding.gtf.gz",
+@transform(os.path.join(PARAMS["annotations_dir"],
+                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
            suffix(".gtf.gz"),
            ".introns.gtf.gz")
 def transcripts2Introns(infile, outfile):
@@ -1239,10 +1252,11 @@ def profiles():
 ###################################################################
 @follows(mkdir("clusters.dir"), mapping_qc)
 @subdivide(dedup_alignments,
-       regex(".+/(.+).bam"),
-       add_inputs(buildReferenceGeneSet),
-       [r"clusters.dir/\1.bg.gz",
-        r"clusters.dir/\1.bed.gz"])
+           regex(".+/(.+).bam"),
+           add_inputs(os.path.join(PARAMS["annotations_dir"],
+                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
+           [r"clusters.dir/\1.bg.gz",
+            r"clusters.dir/\1.bed.gz"])
 def callSignificantClusters(infiles, outfiles):
     '''Call bases as significant based on mapping depth in window
     around base'''
@@ -1374,12 +1388,12 @@ def clusters2fasta(infile, outfile):
 
 
 ###################################################################
-@transform(buildReferenceGeneSet,
-            suffix(".gtf.gz"),
-            ".fa.gz")
+@transform(os.path.join(PARAMS["annotations_dir"],
+                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
+           regex(".+/(.+).gtf.gz"),
+           r"\1.fa.gz")
 def getReferenceGenesetFasta(infile, outfile):
     '''Collapse genesets onto single intervals and get fasta'''
-
 
     logfile = P.snip(outfile, ".fa.gz") + ".log"
 
@@ -1498,7 +1512,7 @@ def makeUnionBams(infiles, outfile):
                        ln -sf %(infile)s.bai %(outfile)s.bai;'''
     else:
 
-        statement = ''' samtools merge %(outfile)s %(infiles)s;
+        statement = ''' samtools merge -f %(outfile)s %(infiles)s;
                         checkpoint;
 
                         samtools index %(outfile)s'''
