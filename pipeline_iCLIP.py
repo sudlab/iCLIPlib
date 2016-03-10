@@ -1118,8 +1118,8 @@ def loadGeneProfiles(infiles, outfile):
 @follows(mapping_qc)
 @transform(os.path.join(PARAMS["annotations_dir"],
                         PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
-           suffix(".gtf.gz"),
-           ".exons.gtf.gz")
+           regex(".+/(.+).gtf.gz"),
+           r"\1.exons.gtf.gz")
 def transcripts2Exons(infile, outfile):
     ''' Make each exon a seperate gene to allow quantitaion over exons
     only keeps those exons longer than 100 base pairs'''
@@ -1146,8 +1146,8 @@ def transcripts2Exons(infile, outfile):
 @follows(mapping_qc)
 @transform(os.path.join(PARAMS["annotations_dir"],
                         PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
-           suffix(".gtf.gz"),
-           ".introns.gtf.gz")
+           regex(".+/(.+).gtf.gz"),
+           r"\1.introns.gtf.gz")
 def transcripts2Introns(infile, outfile):
     ''' Make each exon a seperate gene to allow quantitaion over exons'''
 
@@ -1175,7 +1175,7 @@ def transcripts2Introns(infile, outfile):
 @product(dedup_alignments,
          formatter(".+/(?P<TRACK>.+).bam"),
          [transcripts2Exons, transcripts2Introns],
-         formatter(".+/refcoding.(?P<INTERVALTYPE>.+).gtf.gz"),
+         formatter(".+/geneset_all.(?P<INTERVALTYPE>.+).gtf.gz"),
          "gene_profiles.dir/{TRACK[0][0]}.{INTERVALTYPE[1][0]}.log")
 def calculateExonProfiles(infiles, outfile):
 
