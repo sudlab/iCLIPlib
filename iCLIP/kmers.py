@@ -39,10 +39,10 @@ def pentamer_frequency(profile, length, regex_matches, nSpread=15):
         :rtype: pandas.Series with the count of each regex'''
 
     kmer = len(regex_matches.index.values[0])
-    profile = profile.reindex(np.arange(-nSpread, length+nSpread-kmer), fill_value=0)
+    profile = profile.reindex(
+        np.arange(-nSpread, length+nSpread-kmer), fill_value=0)
     profile = spread(profile, nSpread, False, nSpread - kmer)
     profile = profile.values
-
 
     def _count_regex(hits):
 

@@ -1,22 +1,25 @@
 '''This file contains functions and classes relating to calling iCLIP
 clusters'''
 
-
-import iCLIP
 import CGAT.Experiment as E
 import numpy as np
 import pandas as pd
 import CGAT.GTF as GTF
 
+from utils import spread, rand_apply, TranscriptCoordInterconverter
+from counting import count_transcript, count_intervals
+from kmers import LiteExon
 
-def Ph(profile, exon, spread):
+
+def Ph(profile, exon, nspread):
     '''Calculates a Series, Ph, such that Ph[i] is the
     P(X >= i) where X is the height of signal on a base of the
     profile'''
 
-    profile = profile.reindex(np.arange(exon.start-spread, 
-                                        exon.end+ spread + 1), fill_value=0)
-    profile = iCLIP.spread(profile, spread, reindex=False)
+    profile = profile.reindex(np.arange(exon.start-spread,
+                                        exon.end + spread + 1),
+                              fill_value=0)
+    profile = spread(profile, nspread, reindex=False)
     profile = profile[profile > 0]
     pdf = profile.value_counts()
     pdf = pdf/pdf.sum()
@@ -26,23 +29,23 @@ def Ph(profile, exon, spread):
     return cdf
 
 
-def fdr(profile, exon, spread, randomizations):
+def fdr(profile, exon, nspread, randomizations):
     '''Calculate the FDR of finding a particular heights
     by using randomizations'''
 
-    profile_Ph = Ph(profile, exon, spread)
-    rands = iCLIP.rand_apply(profile, exon,
-                             randomizations,
-                             Ph,
-                             False,
-                             exon,
-                             spread)
+    profile_Ph = Ph(profile, exon, nspread)
+    rands = rand_apply(profile, exon,
+                       randomizations,
+                       Ph,
+                       False,
+                       exon,
+                       nspread)
     rands = rands.reindex(columns=profile_Ph.index)
     rands = rands.fillna(0)
     muh = rands.mean()
     sigmah = rands.std()
     fdr_thresholds = (muh + sigmah) / profile_Ph
-    spread_profile = iCLIP.spread(profile, spread)
+    spread_profile = spread(profile, nspread)
     fdrs = spread_profile.map(fdr_thresholds)
     try:
         fdrs = fdrs.loc[profile.index]
@@ -58,33 +61,33 @@ def fdr(profile, exon, spread, randomizations):
 def _get_profiles_and_conveter(gtf_iterator, bam):
 
     for transcript in gtf_iterator:
-
+        
         gene_id = transcript[0].gene_id
         transcript_id = transcript[0].transcript_id
         contig = transcript[0].contig
         strand = transcript[0].strand
-
+         
         E.debug("Crunching gene: %s, transcript: %s"
                 % (gene_id, transcript_id))
-
+         
         # exons
-        profile = iCLIP.count_transcript(transcript, bam)
+        profile = count_transcript(transcript, bam)
 
         if profile.sum() > 0:
-            converter = iCLIP.TranscriptCoordInterconverter(transcript)
-            yield (profile, converter, iCLIP.LiteExon(0, converter.length),
+            converter = TranscriptCoordInterconverter(transcript)
+            yield (profile, converter, LiteExon(0, converter.length),
                    contig)
 
         # introns
        
         intron_intervals = GTF.toIntronIntervals(transcript)
-        intron_counts = iCLIP.count_intervals(bam, intron_intervals,
-                                              contig, strand)
+        intron_counts = count_intervals(bam, intron_intervals,
+                                        contig, strand)
         if intron_counts.sum() == 0:
             continue
 
-        converter = iCLIP.TranscriptCoordInterconverter(transcript,
-                                                        introns=True)
+        converter = TranscriptCoordInterconverter(transcript,
+                                                  introns=True)
         intron_counts.index = converter.genome2transcript(
             intron_counts.index.values)
 
@@ -95,7 +98,7 @@ def _get_profiles_and_conveter(gtf_iterator, bam):
             intron = (intron[0], intron[1] + 1)
             profile = intron_counts.loc[float(intron[0]):float(intron[1])]
             if profile.sum() > 0:
-                yield (profile, converter, iCLIP.LiteExon(*intron), contig)
+                yield (profile, converter, LiteExon(*intron), contig)
 
 
 def _get_fdr_for_transcript(profile, exon, spread, randomizations,
@@ -142,7 +145,7 @@ def get_crosslink_fdr_by_randomisation(gtf_iterator, bam,
             for profile, converter, exon, contig
             in _get_profiles_and_conveter(gtf_iterator, bam))
     if pool:
-        results = pool.imap(_par_get_fdr_for_transcript,args)
+        results = pool.imap(_par_get_fdr_for_transcript, args)
     else:
         results = (_get_fdr_for_transcript(*arg) for arg in args)
 

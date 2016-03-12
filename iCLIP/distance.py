@@ -1,3 +1,6 @@
+''' This module contains a varety of diffrent functions for calculating
+distance between two profiles'''
+
 from utils import spread
 import numpy as np
 
