@@ -67,6 +67,7 @@ Command line options
 
 import sys
 import pysam
+import numpy
 
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
@@ -140,7 +141,7 @@ def main(argv=None):
     results["start"] = results["start"].astype("int")
     results["end"] = results.start + 1
     results = results.loc[:,["contig", "start", "end", "FDR"]]
-
+    results["FDR"] = -numpy.log10(results["FDR"])
     results.to_csv(options.stdout, header=False, index=False, sep="\t")
     # write footer and output benchmark information.
     E.Stop()
