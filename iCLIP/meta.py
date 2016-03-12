@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import CGAT.GTF as GTF
 
+from utils import count_transcript
+
 
 ##################################################
 def bin_counts(counts, length, nbins):
@@ -25,7 +27,7 @@ def bin_counts(counts, length, nbins):
 
 ##################################################
 def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
-              output_matrix=False, calculate_flanks=False, 
+              output_matrix=False, calculate_flanks=False,
               pseudo_count=0):
     ''' Produce a metagene profile accross the :param gtf_file: from the reads
     in :param bam_file:.
@@ -54,7 +56,8 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
     for transcript in GTF.transcript_iterator(
             GTF.iterator(gtf_filelike)):
       
-        length = sum([x.end - x.start for x in transcript if x.feature == "exon"])
+        length = sum(
+            [x.end - x.start for x in transcript if x.feature == "exon"])
 
         if calculate_flanks:
             flanks = length * float(bins[0])/bins[1]
@@ -65,7 +68,8 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
         if flanks > 0:
             length_lookup["exons"] = length
             binned_counts = counts.groupby(level=0).apply(
-                lambda x: bin_counts(x, length_lookup[x.name], nbins_lookup[x.name]))
+                lambda x: bin_counts(x, length_lookup[x.name],
+                                     nbins_lookup[x.name]))
         else:
             binned_counts = bin_counts(counts, length, bins)
 
@@ -75,7 +79,8 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 
     counts_matrix = pd.concat(counts_collector, axis=1)
     counts_matrix = counts_matrix.transpose()
-    counts_matrix = (counts_matrix.fillna(0) + pseudo_count).div(counts_matrix.sum(axis=1), axis=0)
+    counts_matrix = (counts_matrix.fillna(0) + pseudo_count).div(
+        counts_matrix.sum(axis=1), axis=0)
     summed_matrix = counts_matrix.sum()
     summed_matrix.name = "density"
 

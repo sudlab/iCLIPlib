@@ -217,6 +217,7 @@ class TranscriptCoordInterconverter:
 
         return sorted(genome_list)
 
+
 ##################################################
 def randomiseSites(profile, start, end, keep_dist=True):
     '''Randomise clipped sites within an interval (between start and end)
@@ -244,7 +245,7 @@ def spread(profile, bases, reindex=True, right_bases=None):
     if right_bases:
         window = bases+right_bases
     else:
-        window = 2 * bases  + 1
+        window = 2 * bases + 1
         right_bases = bases
 
     if reindex:

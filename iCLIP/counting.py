@@ -1,4 +1,15 @@
+''' These functions deal with calculating the read counts within a genomic region. 
+in general they return a pandas Series of read counts. '''
+
+
 import pandas as pd
+import collections
+
+import CGAT.Experiment as E
+import CGAT.GTF as GTF
+
+from utils import TranscriptCoordInterconverter
+
 
 def find_first_deletion(cigar):
     '''Find the position of the the first deletion in a
@@ -44,8 +55,7 @@ def getCrosslink(read):
 
     to record whether the position came from a truncation or a deletion '''
 
-
-    if not 'D' in read.cigarstring:
+    if 'D' not in read.cigarstring:
         if read.is_reverse:
             pos = read.aend
 
@@ -62,12 +72,11 @@ def getCrosslink(read):
             position = find_first_deletion(read.cigar)
             pos = read.pos + position
 
-
     return pos
 
 
 ##################################################
-def countChr(reads, chr_len, dtype = 'uint16'):
+def countChr(reads, chr_len, dtype='uint16'):
     ''' Counts the crosslinked bases for each read in the pysam rowiterator
     reads and saves them in pandas Series: those on the positive strand
     and those on the negative strand. The Series are indexed on genome position,
@@ -145,7 +154,7 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
         # later.
         try:
             reads = bam.fetch(reference=contig,
-                              start=max(0,exon[0]-1),
+                              start=max(0, exon[0]-1),
                               end=exon[1]+1)
         except ValueError as e:
             E.debug(e)
@@ -168,8 +177,9 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
                     float(exon[0]):float(exon[1]-1)])
             
         else:
-            sum_counts = count_results[0].loc[(count_results[0].index >= exon[0]) &
-                                              (count_results[0].index < exon[1])] + \
+            sum_counts = count_results[0].loc[
+                (count_results[0].index >= exon[0]) &
+                (count_results[0].index < exon[1])] + \
                 count_results[1].loc[(count_results[1].index >= exon[0]) &
                                      (count_results[1].index < exon[1])]
             exon_counts.append(sum_counts)
@@ -217,10 +227,11 @@ def count_transcript(transcript, bam, flanks=0):
                 names=["region", "base"])
         else:
             # deal with empty case
-            counts.index = pandas.MultiIndex(levels=[["flank5", "exon", "flank3"],
-                                                     []],
-                                             labels=[[], []],
-                                             names=["region", "base"])
+            counts.index = pandas.MultiIndex(
+                levels=[["flank5", "exon", "flank3"],
+                        []],
+                labels=[[], []],
+                names=["region", "base"])
  
         transcript_min = min([a for a, b in exons])
         transcript_max = max([b for a, b in exons])
