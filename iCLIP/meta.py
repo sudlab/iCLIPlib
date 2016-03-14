@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import CGAT.GTF as GTF
 
-from utils import count_transcript
+from counting import count_transcript
 
 
 ##################################################
