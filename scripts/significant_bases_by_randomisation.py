@@ -72,7 +72,7 @@ import numpy
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
 
-import clusters
+import iCLIP.clusters as clusters
 
 
 def main(argv=None):

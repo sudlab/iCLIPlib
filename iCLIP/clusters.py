@@ -54,7 +54,7 @@ def fdr(profile, exon, nspread, randomizations):
         print spread_profile.index
         print fdrs.index
         raise
-
+    fdrs = fdrs.reindx(profile.index)
     return fdrs
 
 
