@@ -179,9 +179,10 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
         else:
             sum_counts = count_results[0].loc[
                 (count_results[0].index >= exon[0]) &
-                (count_results[0].index < exon[1])] + \
-                count_results[1].loc[(count_results[1].index >= exon[0]) &
-                                     (count_results[1].index < exon[1])]
+                (count_results[0].index < exon[1])].add(
+                    count_results[1].loc[(count_results[1].index >= exon[0]) &
+                                         (count_results[1].index < exon[1])],
+                    fill_value=0)
             exon_counts.append(sum_counts)
 
     if len(exon_counts) == 0:
@@ -189,6 +190,7 @@ def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
     else:
         transcript_counts = pd.concat(exon_counts)
     # transcript_counts = transcript_counts.sort_index()
+
     return transcript_counts
 
 

@@ -39,9 +39,14 @@ import sys
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
 import CGAT.Intervals as Intervals
-import iCLIP
+import os
 import pysam
 
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__)
+    ,".."))
+
+import iCLIP
 
 def main(argv=None):
     """script main.
@@ -98,7 +103,12 @@ def main(argv=None):
         intron_counts = intron_counts.sum()
 
         if options.feature == "exon":
-            exon_id = feature[0].exon_id
+
+            try:
+                exon_id = feature[0].exon_id
+            except AttributeError:
+                exon_id = "missing"
+
             gene_id = feature[0].gene_id
             transcript_id = feature[0].transcript_id
             intron_counts = "NA"
