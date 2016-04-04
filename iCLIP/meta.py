@@ -3,7 +3,7 @@ import pandas as pd
 import CGAT.GTF as GTF
 
 from counting import count_transcript
-
+from counting import count_intervals
 
 ##################################################
 def bin_counts(counts, length, nbins):
@@ -90,3 +90,57 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
         return summed_matrix, None
 
 
+##################################################
+def processing_index(interval_iterator, bam, window_size=50):
+    '''Calculate the processing index for the speicied sample, using the
+    provided interval_iterator to get the cleavage sites. The iterator
+    can be GTF or BED, as long as it has end, contig and strand
+    attributes. The end attribute will be used to define the
+    cleavage site.
+
+    The proccessing index for G genes is defined as:
+    
+    .. math::
+
+       pi = log_2( \frac{\sum_{i=1}^{G} N_i^{PM}}{\sum_{i=1}^{G} N_i^M})
+
+    after Baejen et al Mol Cell 5(55):745-757. However, Beaejen et al
+    normalise this number to the total number of genes, which seems
+    wrong to me. '''
+
+    n_pm = 0
+    n_m = 0
+ 
+    for site in interval_iterator:
+    
+        if site.strand == "+":
+            pos = site.end
+        elif site.strand == "-":
+            pos = site.start
+        else:
+            raise ValueError(
+                "processing index not valid for unstranded cleavage points in "
+                "entry\n" + str(site)+"\n")
+
+        upstream_interval = (pos - window_size, pos)
+        downstream_interval = (pos, pos + window_size)
+
+        counts = count_intervals(bam, [upstream_interval, downstream_interval],
+                                 site.contig, site.strand)
+
+        # We are currently in genome cooridinates, not transcript
+
+        if site.strand == "+":
+            # pandas indexing is inclusive
+            n_up = counts.iloc[:pos-1].sum()
+            n_down = counts.iloc[pos:].sum()
+        elif site.strand == "-":
+            n_up = counts.iloc[pos:].sum()
+            n_down = counts.iloc[:pos-1].sum()
+
+        n_pm += n_down
+        n_m += n_up-n_down
+
+    pi = np.log2(float(n_pm)/float(max(1, n_m)))
+
+    return pi
