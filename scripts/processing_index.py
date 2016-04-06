@@ -53,9 +53,14 @@ Command line options
 
 import sys
 import pysam
+import os
+
 import CGAT.Experiment as E
 from CGAT import GTF
 from CGAT import Bed
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
 
 import iCLIP
 
