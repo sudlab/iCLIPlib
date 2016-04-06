@@ -16,8 +16,8 @@ def Ph(profile, exon, nspread):
     P(X >= i) where X is the height of signal on a base of the
     profile'''
 
-    profile = profile.reindex(np.arange(exon.start-spread,
-                                        exon.end + spread + 1),
+    profile = profile.reindex(np.arange(exon.start-nspread,
+                                        exon.end + nspread + 1),
                               fill_value=0)
     profile = spread(profile, nspread, reindex=False)
     profile = profile[profile > 0]
@@ -54,7 +54,7 @@ def fdr(profile, exon, nspread, randomizations):
         print spread_profile.index
         print fdrs.index
         raise
-    fdrs = fdrs.reindx(profile.index)
+    fdrs = fdrs.reindex(profile.index)
     return fdrs
 
 
@@ -101,10 +101,10 @@ def _get_profiles_and_conveter(gtf_iterator, bam):
                 yield (profile, converter, LiteExon(*intron), contig)
 
 
-def _get_fdr_for_transcript(profile, exon, spread, randomizations,
+def _get_fdr_for_transcript(profile, exon, nspread, randomizations,
                             converter, contig):
 
-    fdrs = fdr(profile, exon, spread, randomizations)
+    fdrs = fdr(profile, exon, nspread, randomizations)
     fdrs.index = pd.MultiIndex.from_tuples(
         [(contig, x) for x in converter.transcript2genome(fdrs.index.values)])
     return fdrs
@@ -118,7 +118,7 @@ def _par_get_fdr_for_transcript(args):
 
 def get_crosslink_fdr_by_randomisation(gtf_iterator, bam,
                                        randomisations=100,
-                                       spread=15, pool=None):
+                                       nspread=15, pool=None):
     ''' This function will carry out the assessment of crosslink site
     significance using the method outlined in Wang Z et al.
 
@@ -141,7 +141,7 @@ def get_crosslink_fdr_by_randomisation(gtf_iterator, bam,
         :rtype: pd.Series with a MultiIndex first level contig,
                 second level base'''
 
-    args = ((profile, exon, spread, randomisations, converter, contig)
+    args = ((profile, exon, nspread, randomisations, converter, contig)
             for profile, converter, exon, contig
             in _get_profiles_and_conveter(gtf_iterator, bam))
     if pool:
