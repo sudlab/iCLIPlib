@@ -2,7 +2,7 @@
 
 from counting import count_intervals, count_transcript, countChr
 from utils import spread, rand_apply, randomiseSites, TranscriptCoordInterconverter
-from meta import meta_gene, processing_index
+from meta import meta_gene, processing_index, get_binding_matrix, quantile_row_norm,  sum_row_norm, compress_matrix
 from kmers import pentamer_enrichment, pentamer_frequency
 from distance import calcAverageDistance, findMinDistance, corr_profile
 from clusters import Ph, fdr, get_crosslink_fdr_by_randomisation
