@@ -245,10 +245,10 @@ def compress_matrix(matrix, nrows=None, ncols=None):
     in the matrix are collapsed by averaging. Assumes matrix is sorted'''
 
     if ncols:
-        groups, bins = pd.cut(matrix.columns.index.values, ncols,
+        groups, bins = pd.cut(matrix.columns.values, ncols,
                               retbins=True, labels=False)
         groups = bins[groups]
-        matrix = matrix.groupby(pd.cut(groups), axis=1).mean(axis=1)
+        matrix = matrix.groupby(groups, axis=1).mean()
 
     if nrows:
         groups = pd.cut(range(matrix.shape[0]), nrows, labels=False)
