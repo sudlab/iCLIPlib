@@ -33,16 +33,18 @@ Command line options
 '''
 
 import sys
+import os
 import CGAT.Experiment as E
 from CGAT import GTF
 from CGAT import IOTools
 from CGAT import Intervals
-
-import iCLIP
 import pysam
 import pandas
 
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
 
+import iCLIP
 
 sort_choices = ["length", "3utr", "5utr", "none"]
 align_choices = ["start", "end"]

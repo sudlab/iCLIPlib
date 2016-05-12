@@ -112,14 +112,19 @@ from scipy.stats import binom
 import pandas as pd
 import numpy as np
 import sys
+import os
 import CGAT.Experiment as E
-import iCLIP
 import CGAT.GTF as GTF
 import CGAT.IOTools as IOTools
 import pysam
 from statsmodels.stats.multitest import multipletests
 import CGAT.Intervals as Intervals
 import CGAT.Bed as Bed
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
+import iCLIP
 
 
 def get_windows(pvalues, window_size, threshold):

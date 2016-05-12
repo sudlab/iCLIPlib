@@ -33,13 +33,15 @@ Command line options
 '''
 
 import sys
-import re
+import os
 import CGAT.Experiment as E
-import CGAT.Bed as Bed
-import pandas
-import iCLIP
 import pysam
 import numpy
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
+import iCLIP
 
 
 def main(argv=None):

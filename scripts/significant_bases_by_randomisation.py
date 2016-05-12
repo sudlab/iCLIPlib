@@ -66,11 +66,15 @@ Command line options
 '''
 
 import sys
+import os
 import pysam
 import numpy
 
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
 
 import iCLIP.clusters as clusters
 

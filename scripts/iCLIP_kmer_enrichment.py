@@ -36,12 +36,17 @@ Command line options
 '''
 
 import sys
+import os
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
 from CGAT.IndexedFasta import IndexedFasta
 import pysam
 
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
 import iCLIP
+
 
 def main(argv=None):
     """script main.

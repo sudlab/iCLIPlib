@@ -54,11 +54,17 @@ Command line options
 '''
 
 import sys
+import os
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
 import CGAT.Bed as Bed
 import pysam
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
 import iCLIP
+
 
 def bed_counter(bedfile, intervals, contig, strand):
 

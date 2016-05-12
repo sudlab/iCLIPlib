@@ -51,6 +51,10 @@ import CGAT.Experiment as E
 import pysam
 import subprocess
 import tempfile
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
 import iCLIP
 
 

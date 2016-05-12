@@ -57,12 +57,16 @@ Command line options
 
 import sys
 import pysam
-import iCLIP
 import CGAT.Experiment as E
 import numpy as np
 import collections
 import pandas as pd
 import os.path
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
+import iCLIP
 
 
 def main(argv=None):

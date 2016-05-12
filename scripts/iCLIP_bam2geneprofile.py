@@ -42,10 +42,15 @@ Command line options
 '''
 
 import sys
+import os
 import CGAT.Experiment as E
-import iCLIP
 import pysam
 import CGAT.IOTools as IOTools
+
+sys.path.insert(1, os.path.join(
+    os.path.dirname(__file__), ".."))
+
+import iCLIP
 
 
 def main(argv=None):
