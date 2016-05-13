@@ -317,7 +317,8 @@ def main(argv=None):
                 zlim=c(0, 1),
                 raster=True,
                 col=cols,
-                xlab="Base")
+                xlab="Base",
+                yaxt="n")
 
         def _sort_and_compress_annotation(anno):
             sorted_anno = anno.loc[sorter.index]
