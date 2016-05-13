@@ -148,7 +148,6 @@ def main(argv=None):
     if options.plot and (options.height is None):
         options.height = 100
 
-    print options.height
     if options.gtf:
         
         f = IOTools.openFile(options.gtf)
@@ -231,6 +230,7 @@ def main(argv=None):
 
             gtf_iterator = _it_reverse(gtf_iterator)
             options.ds_win, options.us_win = options.us_win, options.ds_win
+            align_at = lengths
 
         raw_matrix = iCLIP.get_binding_matrix(bamfile, gtf_iterator,
                                               align_at=align_at,
@@ -238,12 +238,12 @@ def main(argv=None):
                                               left_margin=options.us_win,
                                               right_margin=options.ds_win)
         if options.rstrand:
+            
             raw_matrix.columns = -1 * raw_matrix.columns.values
             raw_matrix = raw_matrix.sort_index(axis=1)
 
     if options.crop:
         crop_from, crop_to = map(int, options.crop.split(":"))
-        print raw_matrix.columns
         raw_matrix = raw_matrix.loc[:, crop_from:crop_to]
 
     normalized_matrix = normalize(raw_matrix, options.normalize,
@@ -312,7 +312,7 @@ def main(argv=None):
         groups = renormalized_matrix.index.values.astype("int")
         mat = renormalized_matrix.as_matrix()
         mat[mat > 0.99999] = 0.99999
-        print groups
+
         R.image(bases, groups, R.t(mat),
                 zlim=c(0, 1),
                 raster=True,
