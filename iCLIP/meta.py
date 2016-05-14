@@ -193,7 +193,7 @@ def get_binding_matrix(bamfile,
             continue
 
         counts = counts.reset_index()
-    
+
         flank3 = counts["region"] == "flank3"
         flank5 = counts["region"] == "flank5"
     

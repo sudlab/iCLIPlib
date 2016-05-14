@@ -62,6 +62,56 @@ def normalize(matrix, method, quantile=0.99):
         return matrix
 
 
+def get_matrix(getter, lengths, options):
+
+    if getter is None:
+        E.error("No bamfile or wigfile specified")
+        print(globals()["__usage__"])
+        return(1)
+
+    f = IOTools.openFile(options.gtf)
+    if options.feature == "gene":
+        gtf_iterator = GTF.flat_gene_iterator(GTF.iterator(f))
+    else:
+        gtf_iterator = GTF.transcript_iterator(GTF.iterator(f))
+
+    if options.ds_win is None:
+        ds_win = lengths.max()
+    else:
+        ds_win = options.ds_win
+
+    if options.align_at == "start":
+        align_at = 0
+        us_win, ds_win = options.us_win, ds_win
+    elif options.align_at == "end":
+        align_at = lengths
+        ds_win, us_win = options.us_win, ds_win
+            
+    if options.rstrand:
+        def _it_reverse(gtf):
+            for transcript in gtf:
+                if transcript[0].strand == "+":
+                    transcript[0].strand = "-"
+                else:
+                    transcript[0].strand = "+"
+                yield transcript
+
+        gtf_iterator = _it_reverse(gtf_iterator)
+        ds_win, us_win = us_win, ds_win
+        align_at = lengths
+
+    raw_matrix = iCLIP.get_binding_matrix(getter, gtf_iterator,
+                                          align_at=align_at,
+                                          bin_size=options.bin_size,
+                                          left_margin=us_win,
+                                          right_margin=ds_win)
+    if options.rstrand:
+        
+        raw_matrix.columns = -1 * raw_matrix.columns.values
+        raw_matrix = raw_matrix.sort_index(axis=1)
+
+    return raw_matrix
+
 def main(argv=None):
     """script main.
     parses command line options in sys.argv, unless *argv* is given.
@@ -141,6 +191,12 @@ def main(argv=None):
     parser.add_option("--format", dest="format", type="string",
                       default="png",
                       help="Output format, use valid R graphics device")
+    parser.add_option("--plus-wig", dest="plus_wig", type="string",
+                      help="Use this wig for plus strand info rather than bam file")
+    parser.add_option("--minus-wig", dest="minus_wig", type="string",
+                      help="Use this wig for minus strand info rather than bam file")
+    parser.add_option("--norm-wig", dest="norm_wig", type="string",
+                      help="Use this wig for normalizing (e.g. RNA data")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -187,60 +243,32 @@ def main(argv=None):
         options.sort = "none"
         options.annotations=None
 
+    if options.plus_wig:
+        getter = iCLIP.make_getter(plus_wig=options.plus_wig,
+                                   minus_wig=options.minus_wig)
+    else:
+        try:
+            getter = iCLIP.make_getter(bamfile=args[0])
+        except IOError:
+            E.error("Cannot open bamfile %s" % args[0])
+            return(1)
+        except IndexError:
+            getter = None
+
     if options.use_matrix:
         raw_matrix = pandas.read_csv(options.use_matrix,
                                      sep="\t",
                                      index_col=0)
         raw_matrix.columns = raw_matrix.columns.astype("int")
     else:
+        raw_matrix = get_matrix(getter, lengths, options)
 
-        try:
-            bamfile = pysam.AlignmentFile(args[0])
-        except IOError:
-            E.error("Cannot open bamfile %s" % args[0])
-            return(1)
-        except IndexError:
-            E.error("No bamfile specified")
-            print(globals()["__usage__"])
-            return(1)
-
-        f = IOTools.openFile(options.gtf)
-        if options.feature == "gene":
-            gtf_iterator = GTF.flat_gene_iterator(GTF.iterator(f))
-        else:
-            gtf_iterator = GTF.transcript_iterator(GTF.iterator(f))
-
-        if options.ds_win is None:
-            options.ds_win = lengths.max()
-
-        if options.align_at == "start":
-            align_at = 0
-        elif options.align_at == "end":
-            align_at = lengths
-            options.ds_win, options.us_win = options.us_win, options.ds_win
-            
-        if options.rstrand:
-            def _it_reverse(gtf):
-                for transcript in gtf:
-                    if transcript[0].strand == "+":
-                        transcript[0].strand = "-"
-                    else:
-                        transcript[0].strand = "+"
-                    yield transcript
-
-            gtf_iterator = _it_reverse(gtf_iterator)
-            options.ds_win, options.us_win = options.us_win, options.ds_win
-            align_at = lengths
-
-        raw_matrix = iCLIP.get_binding_matrix(bamfile, gtf_iterator,
-                                              align_at=align_at,
-                                              bin_size=options.bin_size,
-                                              left_margin=options.us_win,
-                                              right_margin=options.ds_win)
-        if options.rstrand:
-            
-            raw_matrix.columns = -1 * raw_matrix.columns.values
-            raw_matrix = raw_matrix.sort_index(axis=1)
+    if options.norm_wig:
+        getter = iCLIP.make_getter(plus_wig=options.norm_wig)
+        norm_matrix = get_matrix(getter, lengths, options)
+        norm_matrix = norm_matrix.loc[raw_matrix.index].fillna(0) + 1
+        print norm_matrix.isnull().sum()
+        raw_matrix = raw_matrix / norm_matrix
 
     if options.crop:
         crop_from, crop_to = map(int, options.crop.split(":"))

@@ -3,7 +3,11 @@ in general they return a pandas Series of read counts. '''
 
 
 import pandas as pd
+import numpy as np
 import collections
+from functools import partial
+from bx.bbi.bigwig_file import BigWigFile
+import pysam
 
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
@@ -142,48 +146,97 @@ def countChr(reads, chr_len, dtype='uint16'):
 
 
 ##################################################
-def count_intervals(bam, intervals, contig, strand=".", dtype='uint16'):
+def wig_getter(plus_wig, minus_wig, contig, start=0, end=None, dtype="uint16", strand="."):
+    
+    if strand == "+" or minus_wig is None:
+        counts = plus_wig.get_as_array(contig, start, end)
+        result = pd.Series(counts, index=np.arange(start, end, dtype="float")).dropna()
+        return result
+    elif strand == "-":
+        counts = -1 * minus_wig.get_as_array(contig, start, end)
+        result = pd.Series(counts, index=np.arange(start, end, dtype="float")).dropna()
+        return result
+    elif strand == ".":
+        plus_counts = plus_wig.get_as_array(contig, start, end)
+        minus_counts = -1 * minus_wig.get_as_array(contig, start, end)
+        plus_result = pd.Series(plus_counts, index=np.arange(start, end, dtype="float")).dropna()
+        minus_result = pd.Series(
+            minus_counts, index=range(start, end)).dropna()
+        result = plus_result.add(minus_result, fill_value=0)
+        return result
+
+
+##################################################    
+def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16"):
+    '''A function to get iCLIP coverage across an interval from a BAM file'''
+    chr_len = bamfile.lengths[bamfile.gettid(contig)]
+    if end is None:
+        end = chr_len
+
+    try:
+        reads = bamfile.fetch(reference=contig,
+                              start=start-1,
+                              end=end+1)
+    except ValueError as e:
+        E.debug(e)
+        E.warning("Skipping intervals on contig %s as not present in bam"
+                  % contig)
+        return pd.Series()
+
+    counts = countChr(reads, chr_len, dtype)
+
+    # Two sets of extrainous reads to exlucde: firstly we have pull back
+    # reads with a 1bp extra window. Second fetch pulls back overlapping
+    # reads, not fully contained reads.
+
+    counts = list(counts)
+    if strand != "-" and len(counts[0]) > 0:
+        counts[0] = counts[0].sort_index().loc[
+            float(start):float(end-1)]
+    if strand != "+" and len(counts[1]) > 0:
+        counts[1] = counts[1].sort_index().loc[
+            float(start):float(end-1)]
+    
+    if strand == "+":
+        return counts[0]
+    elif strand == "-":
+        return counts[1]
+    elif strand == ".":
+        return counts[0].add(counts[1], fill_value=0)
+    else:
+        raise ValueError("Invalid strand")
+
+
+##################################################
+def make_getter(bamfile=None, plus_wig=None, minus_wig=None):
+    ''' A factory for getter functions '''
+
+    if bamfile is not None:
+        if not isinstance(bamfile, pysam.AlignmentFile):
+            bamfile = pysam.AlignmentFile(bamfile)
+        return partial(bam_getter, bamfile)
+    else:
+        plus_wig = BigWigFile(open(plus_wig))
+        if minus_wig is not None:
+            minus_wig = BigWigFile(open(minus_wig))
+
+        return partial(wig_getter, plus_wig=plus_wig, minus_wig=minus_wig)
+
+
+##################################################
+def count_intervals(getter, intervals, contig, strand=".", dtype='uint16'):
     ''' Count the crosslinked bases accross a transcript '''
 
-    chr_len = bam.lengths[bam.gettid(contig)]
+    if isinstance(getter, pysam.AlignmentFile):
+        getter = make_getter(bamfile=getter)
+
     exon_counts = []
     for exon in intervals:
-        
-        # X-linked position is first base before read: need to pull back
-        # reads that might be one base out. Extra bases will be filtered out
-        # later.
-        try:
-            reads = bam.fetch(reference=contig,
-                              start=max(0, exon[0]-1),
-                              end=exon[1]+1)
-        except ValueError as e:
-            E.debug(e)
-            E.warning("Skipping intervals on contig %s as not present in bam"
-                      % contig)
-            return pd.Series()
-
-        count_results = countChr(reads, chr_len, dtype)
-
-        # fetch pulls back any reads that *overlap* the specified coordinates
-        # exlude Xlinked bases outside the interval (prevents double counting)
-
-        if strand == "+":
-            if len(count_results[0]) > 0:
-                exon_counts.append(count_results[0].sort_index().loc[
-                    float(exon[0]):float(exon[1]-1)])
-        elif strand == "-":
-            if len(count_results[1]) > 0:
-                exon_counts.append(count_results[1].sort_index().loc[
-                    float(exon[0]):float(exon[1]-1)])
-            
-        else:
-            sum_counts = count_results[0].loc[
-                (count_results[0].index >= exon[0]) &
-                (count_results[0].index < exon[1])].add(
-                    count_results[1].loc[(count_results[1].index >= exon[0]) &
-                                         (count_results[1].index < exon[1])],
-                    fill_value=0)
-            exon_counts.append(sum_counts)
+        exon_counts.append(getter(contig=contig,
+                                  start=exon[0],
+                                  end=exon[1],
+                                  strand=strand,
+                                  dtype=dtype))
 
     if len(exon_counts) == 0:
         transcript_counts = pd.Series()
