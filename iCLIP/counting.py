@@ -146,20 +146,33 @@ def countChr(reads, chr_len, dtype='uint16'):
 
 
 ##################################################
-def wig_getter(plus_wig, minus_wig, contig, start=0, end=None, dtype="uint16", strand="."):
-    
+def wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
+               dtype="uint16", strand="."):
+    ''' Get depth over intervals from a bigWig file. Requests for
+    intervals starting < 0 will be truncated to 0'''
+
+    if start < 0:
+            start = 0
+            E.warning("Truncating start of interval  %s:%i-%i"
+                      % (contig, start, end))
+
     if strand == "+" or minus_wig is None:
         counts = plus_wig.get_as_array(contig, start, end)
-        result = pd.Series(counts, index=np.arange(start, end, dtype="float")).dropna()
+        result = pd.Series(
+            counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
+ 
     elif strand == "-":
         counts = -1 * minus_wig.get_as_array(contig, start, end)
-        result = pd.Series(counts, index=np.arange(start, end, dtype="float")).dropna()
+        result = pd.Series(
+            counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
+
     elif strand == ".":
         plus_counts = plus_wig.get_as_array(contig, start, end)
         minus_counts = -1 * minus_wig.get_as_array(contig, start, end)
-        plus_result = pd.Series(plus_counts, index=np.arange(start, end, dtype="float")).dropna()
+        plus_result = pd.Series(
+            plus_counts, index=np.arange(start, end, dtype="float")).dropna()
         minus_result = pd.Series(
             minus_counts, index=range(start, end)).dropna()
         result = plus_result.add(minus_result, fill_value=0)
