@@ -183,7 +183,7 @@ def wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
 
 
 ##################################################    
-def bam_getter(bamfile, centre=False, contig, start=0, end=None, strand=".", dtype="uint16", 
+def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
                centre=False):
     '''A function to get iCLIP coverage across an interval from a BAM file'''
     chr_len = bamfile.lengths[bamfile.gettid(contig)]
