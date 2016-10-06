@@ -103,6 +103,9 @@ def main(argv=None):
     parser = E.OptionParser(version="%prog version: $Id$",
                             usage=globals()["__doc__"])
 
+    parser.add_option("-c", "--use-centre", dest="centre", action="store_true",
+                      default=False,
+                      help="Use centre of read rather than frist base")
     parser.add_option("-w","--wig", dest="output_wig", action="store_true",
                       default=False,
                       help="Write output to wig file rather than bigwig")
@@ -130,7 +133,8 @@ def main(argv=None):
         # get depths over chromosome
         pos_depth, neg_depth, counter = iCLIP.countChr(in_bam.fetch(chrom),
                                                        chrom_length,
-                                                       options.dtype)
+                                                       options.dtype,
+                                                       centre=options.centre)
         pos_depth_sorted = pos_depth.sort_index()
         del pos_depth
         neg_depth_sorted = neg_depth.sort_index()
