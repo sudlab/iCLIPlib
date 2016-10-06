@@ -64,7 +64,6 @@ sys.path.insert(1, os.path.join(
 
 import iCLIP
 
-
 def last_exon_transcript(gff_file):
     for transcript in GTF.transcript_iterator(GTF.iterator(gff_file)):
         transcript = sorted(transcript)

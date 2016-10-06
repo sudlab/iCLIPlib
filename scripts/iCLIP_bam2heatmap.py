@@ -46,7 +46,7 @@ sys.path.insert(1, os.path.join(
 
 import iCLIP
 
-sort_choices = ["length", "3utr", "5utr", "none"]
+sort_choices = ["length", "first-exon", "3utr", "5utr", "none"]
 align_choices = ["start", "end"]
 norm_choices = ["quantile", "sum", "none"]
 annotation_choices = ["start", "end", "3utr", "5utr"]
@@ -195,8 +195,8 @@ def main(argv=None):
                       help="Use this wig for plus strand info rather than bam file")
     parser.add_option("--minus-wig", dest="minus_wig", type="string",
                       help="Use this wig for minus strand info rather than bam file")
-    parser.add_option("--norm-wig", dest="norm_wig", type="string",
-                      help="Use this wig for normalizing (e.g. RNA data")
+    parser.add_option("--norm-mat", dest="norm_mat", type="string",
+                      help="Use this matrix for normalizing (e.g. RNA data")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -215,13 +215,14 @@ def main(argv=None):
         lengths = dict()
         utr3_lengths = dict()
         utr5_lengths = dict()
-
+        first_exon_lengths = dict()
         for transcript in gtf_iterator:
             lengths[transcript[0].transcript_id] = sum(
                 [e[1] - e[0] for e in GTF.asRanges(transcript, "exon")])
 
+            exons = GTF.asRanges(transcript, "exon")
             utrs = GTF.asRanges(transcript, "UTR")
-            coding = Intervals.truncate(GTF.asRanges(transcript, "exon"), utrs)
+            coding = Intervals.truncate(exons, utrs)
             coding.sort()
 
             utr5 = [utr for utr in utrs if utr[1] <= coding[0][0]]
@@ -229,6 +230,13 @@ def main(argv=None):
 
             if transcript[0].strand == "-":
                 utr3, utr5 = utr5, utr3
+            
+            if transcript[0].strand == "+" or len(exons) == 1:
+                first_exon_lengths[transcript[0].transcript_id] = \
+                    exons[0][1] - exons[0][0]
+            else:
+                first_exon_lengths[transcript[0].transcript_id] = \
+                    exons[-1][1] - exons[-1][0]
 
             utr3_lengths[transcript[0].transcript_id] = sum(
                 [e[1] - e[0] for e in utr3])
@@ -239,9 +247,11 @@ def main(argv=None):
         lengths = pandas.Series(lengths)
         utr3_lengths = pandas.Series(utr3_lengths)
         utr5_lengths = pandas.Series(utr5_lengths)
+        first_exon_lengths = pandas.Series(first_exon_lengths)
+
     else:
         options.sort = "none"
-        options.annotations=None
+        options.annotations = None
 
     if options.plus_wig:
         getter = iCLIP.make_getter(plus_wig=options.plus_wig,
@@ -263,16 +273,29 @@ def main(argv=None):
     else:
         raw_matrix = get_matrix(getter, lengths, options)
 
-    if options.norm_wig:
-        getter = iCLIP.make_getter(plus_wig=options.norm_wig)
-        norm_matrix = get_matrix(getter, lengths, options)
-        norm_matrix = norm_matrix.loc[raw_matrix.index].fillna(0) + 1
-        print norm_matrix.isnull().sum()
-        raw_matrix = raw_matrix / norm_matrix
-
     if options.crop:
         crop_from, crop_to = map(int, options.crop.split(":"))
         raw_matrix = raw_matrix.loc[:, crop_from:crop_to]
+
+    if options.norm_mat:
+        norm_matrix = pandas.read_csv(options.norm_mat,
+                                     sep="\t",
+                                     index_col=0)
+        norm_matrix.columns = norm_matrix.columns.astype("int")
+
+        if options.crop:
+            norm_matrix = norm_matrix.loc[:, crop_from:crop_to]
+
+        if all(norm_matrix.columns == raw_matrix.columns) and \
+           all(raw_matrix.index.isin(norm_matrix.index.values)):
+            norm_matrix = norm_matrix.loc[raw_matrix.index]
+            norm_matrix = norm_matrix.replace(
+                0, norm_matrix[norm_matrix > 0].min().min())
+            raw_matrix = raw_matrix/norm_matrix
+            norm_matrix = None
+
+        else:
+            raise ValueError("Incompatible normalisation matrix")
 
     normalized_matrix = normalize(raw_matrix, options.normalize,
                                   quantile=options.quantile)
@@ -283,6 +306,8 @@ def main(argv=None):
         sorter = utr3_lengths
     elif options.sort == "5utr":
         sorter = utr5_lengths
+    elif options.sort == "first-exon":
+        sorter = first_exon_lengths
     elif options.sort == "none":
         sorter = pandas.Series(range(raw_matrix.shape[0]),
                                index=raw_matrix.index[::-1])
@@ -339,10 +364,10 @@ def main(argv=None):
         bases = renormalized_matrix.columns.values.astype("int")
         groups = renormalized_matrix.index.values.astype("int")
         mat = renormalized_matrix.as_matrix()
-        mat[mat > 0.99999] = 0.99999
+        mat[mat >= 1.2] = 1.2
 
         R.image(bases, groups, R.t(mat),
-                zlim=c(0, 1),
+                zlim=c(0, 1.2),
                 raster=True,
                 col=cols,
                 xlab="Base",
