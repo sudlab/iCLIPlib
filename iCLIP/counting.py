@@ -32,34 +32,37 @@ def find_first_deletion(cigar):
 
 
 ##################################################
-def getCrosslink(read):
-    ''' Finds the crosslinked base from a pysam read.
+def getCrosslink(read, centre=False):
+    '''Finds the crosslinked base from a pysam read.
 
-    Cross linked bases are definated as in Sugimoto et al, Genome Biology 2012
+    Bases are defined in two ways:
+    
+    1.  As in Sugimoto et al, Genome Biology 2012
 
-        The nucleotide preceding the iCLIP cDNAs mapped by Bowtie was used to
-        define the cross link sites identified by truncated cDNAs.
+            The nucleotide preceding the iCLIP cDNAs mapped by Bowtie
+            was used to define the cross link sites identified by
+            truncated cDNAs.
 
-        [For reads with deletions] The deleted nucleotide in CLIP and iCLIP
-        cDNAs mapped by Novoalign was used to define the cross-link sites
-        identified by read-through cDNAs. If a cDNA had more than one deletion,
-        we selected the one closest to the beginning of the read.
+            [For reads with deletions] The deleted nucleotide in CLIP
+            and iCLIP cDNAs mapped by Novoalign was used to define the
+            cross-link sites identified by read-through cDNAs. If a
+            cDNA had more than one deletion, we selected the one
+            closest to the beginning of the read.
 
-    returns a tuple with the position of the read and one of the following
-    categories:
+    2.  (if centre=True) returns the centre base of the read,
+        accounting for splicing etc
 
-        * truncated_neg
-  
-        * truncated_pos
-      
-        * deletion_neg
-
-        * deletion_pos
-
-
-    to record whether the position came from a truncation or a deletion '''
+    '''
 
     if 'D' not in read.cigarstring:
+
+        if centre:
+            reference_bases = read.get_reference_positions(full_length=True)
+            i = len(reference_bases)/2
+            while reference_bases[i] is None and i > 0:
+                i = i -1
+            return reference_bases[i]
+
         if read.is_reverse:
             pos = read.aend
 
@@ -80,7 +83,7 @@ def getCrosslink(read):
 
 
 ##################################################
-def countChr(reads, chr_len, dtype='uint16'):
+def countChr(reads, chr_len, dtype='uint16', centre=False):
     ''' Counts the crosslinked bases for each read in the pysam rowiterator
     reads and saves them in pandas Series: those on the positive strand
     and those on the negative strand. The Series are indexed on genome position,
@@ -112,7 +115,7 @@ def countChr(reads, chr_len, dtype='uint16'):
 
     for read in reads:
         
-        pos = getCrosslink(read)
+        pos = getCrosslink(read, centre)
         counter += 1
 
         if read.is_reverse:
@@ -167,7 +170,8 @@ def wig_getter(plus_wig, minus_wig, contig, start=0, end=None, dtype="uint16", s
 
 
 ##################################################    
-def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16"):
+def bam_getter(bamfile, centre=False, contig, start=0, end=None, strand=".", dtype="uint16", 
+               centre=False):
     '''A function to get iCLIP coverage across an interval from a BAM file'''
     chr_len = bamfile.lengths[bamfile.gettid(contig)]
     if end is None:
@@ -183,7 +187,7 @@ def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16"):
                   % contig)
         return pd.Series()
 
-    counts = countChr(reads, chr_len, dtype)
+    counts = countChr(reads, chr_len, dtype, centre)
 
     # Two sets of extrainous reads to exlucde: firstly we have pull back
     # reads with a 1bp extra window. Second fetch pulls back overlapping
@@ -208,13 +212,13 @@ def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16"):
 
 
 ##################################################
-def make_getter(bamfile=None, plus_wig=None, minus_wig=None):
+def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
     ''' A factory for getter functions '''
 
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
             bamfile = pysam.AlignmentFile(bamfile)
-        return partial(bam_getter, bamfile)
+        return partial(bam_getter, bamfile, centre=centre)
     else:
         plus_wig = BigWigFile(open(plus_wig))
         if minus_wig is not None:
