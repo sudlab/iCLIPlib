@@ -285,7 +285,7 @@ def main(argv=None):
 
         if options.crop:
             norm_matrix = norm_matrix.loc[:, crop_from:crop_to]
-
+        
         if all(norm_matrix.columns == raw_matrix.columns) and \
            all(raw_matrix.index.isin(norm_matrix.index.values)):
             norm_matrix = norm_matrix.loc[raw_matrix.index]
@@ -364,10 +364,10 @@ def main(argv=None):
         bases = renormalized_matrix.columns.values.astype("int")
         groups = renormalized_matrix.index.values.astype("int")
         mat = renormalized_matrix.as_matrix()
-        mat[mat >= 1.2] = 1.2
+        mat[mat >= 1] = 1
 
         R.image(bases, groups, R.t(mat),
-                zlim=c(0, 1.2),
+                zlim=c(0, 1),
                 raster=True,
                 col=cols,
                 xlab="Base",
