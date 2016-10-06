@@ -82,8 +82,11 @@ def outputToWig(depths,chrom, wigfile):
     text and writes it to the specified file '''
 
     wigfile.write("variableStep\tchrom=%s\n" % chrom)
+    depths.index = depths.index
     for row in depths.iteritems():
         row = list(row)
+        if row[0] <= 0:
+            continue
         row = "\t".join(map(str,row)) + "\n"
         wigfile.write(row)
 
@@ -161,7 +164,7 @@ def main(argv=None):
         shutil.move(plus_wig_name, outname_plus + ".wig")
         shutil.move(minus_wig_name, outname_minus + ".wig")
     else:
-        chrom_sizes_file = tempfile.NamedTemporaryFile(delete=False)
+        chrom_sizes_file = tempfile.NamedTemporaryFile(delete=False, dir=".")
         contig_sizes = ["\t".join(map(str,row)) for row in contig_sizes]
         contig_sizes = "\n".join(contig_sizes) + "\n"
         chrom_sizes_file.write(contig_sizes)

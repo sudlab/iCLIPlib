@@ -108,7 +108,6 @@ def main(argv=None):
         calculate_flanks=options.scale_flanks,
         pseudo_count=options.pseudo_count)
 
-    print summed_matrix
     try:
         summed_matrix = summed_matrix[["flank5", "exons", "flank3"]]
     except IndexError:
@@ -125,7 +124,7 @@ def main(argv=None):
 
     if options.matrix:
         counts_matrix = counts_matrix.transpose()
-        print counts_matrix.index
+
         counts_matrix = counts_matrix.loc[["flank5", "exons", "flank3"],:]
         counts_matrix = counts_matrix.reset_index(drop=True)
         counts_matrix = counts_matrix.transpose()

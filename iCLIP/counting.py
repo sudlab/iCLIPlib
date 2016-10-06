@@ -293,6 +293,7 @@ def count_transcript(transcript, bam, flanks=0):
             counts.index = pandas.MultiIndex.from_tuples(
                 zip(*(['exons']*len(counts), counts.index)),
                 names=["region", "base"])
+
         else:
             # deal with empty case
             counts.index = pandas.MultiIndex(
@@ -334,15 +335,30 @@ def count_transcript(transcript, bam, flanks=0):
         if flank3_counts.sum() > 0:
             flank3_counts.index = pandas.MultiIndex.from_tuples(
                 zip(*(index3*len(bases3), bases3)), names=["region", "base"])
+        else:
+            # deal with empty case
+            flank3_counts.index = pandas.MultiIndex(
+                levels=[["flank5", "exon", "flank3"],
+                        []],
+                labels=[[], []],
+                names=["region", "base"])
 
         if flank5_counts.sum() > 0:
             flank5_counts.index = pandas.MultiIndex.from_tuples(
                 zip(*(index5*len(bases5), bases5)), names=["region", "base"])
+        else:
+            # deal with empty case
+            flank5_counts.index = pandas.MultiIndex(
+                levels=[["flank5", "exon", "flank3"],
+                        []],
+                labels=[[], []],
+                names=["region", "base"])
 
         E.debug("After direction detection and reindexing:")
         E.debug(flank3_counts)
         E.debug(flank5_counts)
 
         result = pandas.concat([flank5_counts, counts, flank3_counts])
+
         return result
 
