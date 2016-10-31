@@ -10,7 +10,11 @@ cgat_script_template.py - template for CGAT scripts
 Purpose
 -------
 
-Count the number of clip sites in each gene, transcript or exon
+Count the number of clip sites in each gene, transcript or exon. GTF file is supplied to stdin.
+Bamfile is supplied as the first positional arguement.
+
+Centres can be counted with --use-centres
+
 
 Usage
 -----
@@ -63,7 +67,10 @@ def main(argv=None):
     parser.add_option("-f", "--feature", dest="feature", type="choice",
                       choices=["gene", "transcript", "exon"],
                       default="transcript",
-                      help="supply help")
+                      help="which feature to use: gene/transcript/exon")
+    parser.add_options("-c", "--use-centre", dest="centre", type="store_true",
+                       default=False,
+                       help="Use centre of read rather than start")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -89,7 +96,8 @@ def main(argv=None):
                                             exons,
                                             feature[0].contig,
                                             feature[0].strand,
-                                            dtype="uint32")
+                                            dtype="uint32",
+                                            use_centre=options.centre)
 
         exon_counts = exon_counts.sum()
 
