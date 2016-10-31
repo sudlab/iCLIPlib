@@ -106,7 +106,8 @@ def main(argv=None):
                                               introns,
                                               feature[0].contig,
                                               feature[0].strand,
-                                              dtype="uint32")
+                                              dtype="uint32",
+                                              use_centre=options.centre)
 
         intron_counts = intron_counts.sum()
 
