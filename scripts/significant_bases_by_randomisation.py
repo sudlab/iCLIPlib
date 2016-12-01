@@ -112,6 +112,10 @@ def main(argv=None):
     parser.add_option("-p", "--processes", dest="proc", type="int",
                       default=None,
                       help="Number of processes to use for multiprocessing")
+    parser.add_option("-c", "--centre", dest="centre", type="store_true",
+                      default=False,
+                      help="Use centre of read instead of -1 when no
+                      mutation is present")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -133,7 +137,7 @@ def main(argv=None):
     else:
         raise ValueError("Unknown feature type %s" % options.feature)
 
-    bam = pysam.AlignmentFile(options.bam)
+    bam = iCLIP.make_getter(options.bam, centre=options.centre)
 
     results = clusters.get_crosslink_fdr_by_randomisation(
         iterator, bam, options.rands, options.spread, pool)
