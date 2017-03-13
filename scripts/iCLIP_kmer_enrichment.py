@@ -99,6 +99,7 @@ def main(argv=None):
 
     bam = pysam.AlignmentFile(options.bam)
     fasta = IndexedFasta(options.fasta)
+    fasta.setConverter(IndexedFasta.getConverter("zero-both-open"))
 
     if options.feature == "gene":
         gtf_iterator = GTF.flat_gene_iterator(
