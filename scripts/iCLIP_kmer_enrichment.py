@@ -39,7 +39,7 @@ import sys
 import os
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
-from CGAT.IndexedFasta import IndexedFasta
+from CGAT.IndexedFasta import IndexedFasta, getConverter
 import pysam
 
 sys.path.insert(1, os.path.join(
@@ -99,7 +99,7 @@ def main(argv=None):
 
     bam = pysam.AlignmentFile(options.bam)
     fasta = IndexedFasta(options.fasta)
-    fasta.setConverter(IndexedFasta.getConverter("zero-both-open"))
+    fasta.setConverter(getConverter("zero-both-open"))
 
     if options.feature == "gene":
         gtf_iterator = GTF.flat_gene_iterator(
