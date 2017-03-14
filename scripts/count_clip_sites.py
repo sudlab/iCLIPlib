@@ -68,7 +68,7 @@ def main(argv=None):
                       choices=["gene", "transcript", "exon"],
                       default="transcript",
                       help="which feature to use: gene/transcript/exon")
-    parser.add_options("-c", "--use-centre", dest="centre", type="store_true",
+    parser.add_option("-c", "--use-centre", dest="centre", type="store_true",
                        default=False,
                        help="Use centre of read rather than start")
 
