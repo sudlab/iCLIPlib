@@ -241,7 +241,7 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
 
 
 ##################################################
-def count_intervals(getter, intervals, contig, strand=".", dtype='uint16'):
+def count_intervals(getter, intervals, contig, strand=".", dtype='uint32'):
     ''' Count the crosslinked bases accross a transcript '''
 
     if isinstance(getter, pysam.AlignmentFile):
