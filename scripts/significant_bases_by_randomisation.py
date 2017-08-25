@@ -76,7 +76,7 @@ import CGAT.GTF as GTF
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
 
-import iCLIP.clusters as clusters
+import iCLIP
 
 
 def main(argv=None):
@@ -112,10 +112,10 @@ def main(argv=None):
     parser.add_option("-p", "--processes", dest="proc", type="int",
                       default=None,
                       help="Number of processes to use for multiprocessing")
-    parser.add_option("-c", "--centre", dest="centre", type="store_true",
+    parser.add_option("-c", "--centre", dest="centre", action="store_true",
                       default=False,
-                      help="Use centre of read instead of -1 when no
-                      mutation is present")
+                      help="Use centre of read instead of -1 when no"
+                      "mutation is present")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -139,7 +139,7 @@ def main(argv=None):
 
     bam = iCLIP.make_getter(options.bam, centre=options.centre)
 
-    results = clusters.get_crosslink_fdr_by_randomisation(
+    results = iCLIP.get_crosslink_fdr_by_randomisation(
         iterator, bam, options.rands, options.spread, pool)
 
     results = results[results <= options.threshold]

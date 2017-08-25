@@ -15,8 +15,12 @@ neccesarily suitable for iCLIP as we should only consider the first
 base (or any mutant bases).
 
 This script wraps iCLIP.meta_gene to produce metagene profiles of
-iCLIP bam files. In future it may offer ability to work from bigwigs
-or beds.
+iCLIP bam files. It can also use bigwig files - provide either unstranded
+data to `--plus-wig` or stranded data by also using `--minus-wig`.
+
+Profiles are always normalised to the sum of each window before summing 
+accross windoes, but the full matrix may also be output if custom normalisation
+is required.
 
 Using single bases means we don't have to worry about over sampling single
 reads, so profiles should be less resolution sensitive
@@ -87,11 +91,29 @@ def main(argv=None):
     parser.add_option("--normalised_profile", dest="normalize_profile", action="store_true",
                       default=False,
                       help="Normlize profile by profile sum")
+    parser.add_option("--plus-wig", dest="plus_wig",
+                      default=None,
+                      help="Use this wig file instead of a BAM file to get clip density"
+                      "may be used as only wig file, or may be provided together with"
+                      "--minus-wig for standed computation")
+    parser.add_option("--minus_wig", dest="minus_wig", default=None,
+                      help="Use this to provide stranded wig data")
+    parser.add_option("--centre", dest="centre", action="store_true",
+                      default=False,
+                      help="Use centre of read rather than end")
+    parser.add_option("--no-gene-norm", dest="row_norm", action="store_false",
+                      default=True,
+                      help="Do not normalise profile from each gene")
+    
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
 
-    bam = pysam.AlignmentFile(args[0])
-    
+    if options.plus_wig:
+        bam = iCLIP.make_getter(plus_wig=options.plus_wig,
+                                minus_wig=options.minus_wig)
+    else:
+        bam = iCLIP.make_getter(bamfile=args[0], centre=options.centre)
+
     if options.flanks > 0:
         bins = [options.flank_bins,
                 options.exon_bins,
@@ -99,22 +121,21 @@ def main(argv=None):
     else:
         bins = options.exon_bins
 
+        
     summed_matrix, counts_matrix = iCLIP.meta_gene(
         options.stdin,
         bam,
         bins,
         options.flanks, 
-        output_matrix=options.matrix is not None,
+        output_matrix=(options.matrix is not None),
         calculate_flanks=options.scale_flanks,
-        pseudo_count=options.pseudo_count)
+        pseudo_count=options.pseudo_count,
+        row_norm=options.row_norm)
 
-    try:
+    if options.flanks > 0:
         summed_matrix = summed_matrix[["flank5", "exons", "flank3"]]
-    except IndexError:
-        pass
 
     summed_matrix = summed_matrix.reset_index()
-
     if options.normalize_profile:
         summed_matrix["density"] = summed_matrix["density"]/summed_matrix["density"].sum()
 

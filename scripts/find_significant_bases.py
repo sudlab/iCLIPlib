@@ -441,10 +441,10 @@ parses command line options in sys.argv, unless *argv* is given.
     parser.add_option("-t", "--threshold", dest="threshold", type="float",
                       default=0.05,
                       help="p-value threshold under which to merge windows")
-    parser.add_options("-c", "--centre", dest="centre", action="store_true",
-                       default=False,
-                       help="Use centre of read rather than -1 base when no
-                       mutaiton is present")
+    parser.add_option("-c", "--centre", dest="centre", action="store_true",
+                      default=False,
+                      help="Use centre of read rather than -1 base when no"
+                      "mutaiton is present")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -454,7 +454,7 @@ parses command line options in sys.argv, unless *argv* is given.
     gffs = GTF.gene_iterator(GTF.iterator(options.stdin))
 
     # bam file is the first positional arguement
-    bamfile = iCLIP.make_getter(bamfile, centre=options.centre)
+    bamfile = iCLIP.make_getter(bamfile=args[0], centre=options.centre)
 
     if options.output_both:
         outfile_bases = options.stdout

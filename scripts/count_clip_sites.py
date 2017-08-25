@@ -51,7 +51,7 @@ sys.path.insert(1, os.path.join(
     ,".."))
 
 import iCLIP
-
+print iCLIP.__file__
 def main(argv=None):
     """script main.
     parses command line options in sys.argv, unless *argv* is given.
@@ -68,9 +68,15 @@ def main(argv=None):
                       choices=["gene", "transcript", "exon"],
                       default="transcript",
                       help="which feature to use: gene/transcript/exon")
+    parser.add_option("--unstranded-bw", dest="unstranded_wig", type="string",
+                      help="BigWig with tag counts on both strands")
+    parser.add_option("--plus-bw", dest="plus_wig", type="string",
+                      help="BigWig with tag counts from plus strand")
+    parser.add_option("--minus-bw", dest="minus_wig", type="string",
+                      help="BigWig with tag counts from minus strand")
     parser.add_option("-c", "--use-centre", dest="centre", action="store_true",
-                       default=False,
-                       help="Use centre of read rather than start")
+                      default=False,
+                      help="Use centre of read rather than start")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -87,7 +93,17 @@ def main(argv=None):
                 yield [exon]
         iterator = _exon_iterator(iterator)
 
-    bamfile = pysam.AlignmentFile(args[0])
+    if options.unstranded_wig:
+        bamfile = iCLIP.make_getter(plus_wig=options.unstranded_wig)
+    elif options.plus_wig:
+        if not options.minus_wig:
+            raise ValueError(
+                "Please provide wigs for both strands or use --unstranded_wig")
+        bamfile = iCLIP.make_getter(plus_wig=options.plus_wig,
+                                    minus_wig=options.minus_wig)
+    else:
+        bamfile = pysam.AlignmentFile(args[0])
+        
     outlines = []
     for feature in iterator:
         exons = GTF.asRanges(feature, "exon")

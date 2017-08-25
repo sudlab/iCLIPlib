@@ -9,26 +9,30 @@ from counting import count_intervals
 def bin_counts(counts, length, nbins):
 
     bins = np.linspace(0, length, num=nbins+1, endpoint=True)
-    if len(counts.index.levels) == 2:
+    if isinstance(counts.index, pd.core.index.MultiIndex):
         bases = counts.index.droplevel()
     else:
         bases = counts.index
 
-    binned_counts = counts.groupby(
-        list(pd.cut(bases,
-                    bins=bins,
-                    labels=range(nbins),
-                    include_lowest=True))).sum()
-
-    binned_counts.index.name = "base"
-    binned_counts = binned_counts.reindex(range(nbins), fill_value=0)
+    if counts.sum() > 0:
+        
+        binned_counts = counts.groupby(
+            list(pd.cut(bases,
+                        bins=bins,
+                        labels=range(nbins),
+                        include_lowest=True))).sum()
+        binned_counts.index.name = "base"
+        binned_counts = binned_counts.reindex(range(nbins), fill_value=0)
+    else:
+        binned_counts = pd.Series([0]*nbins, index=range(nbins))
+    
     return binned_counts
 
 
 ##################################################
 def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
               output_matrix=False, calculate_flanks=False,
-              pseudo_count=0):
+              pseudo_count=0, row_norm=True):
     ''' Produce a metagene profile accross the :param gtf_file: from the reads
     in :param bam_file:.
 
@@ -58,7 +62,7 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
       
         length = sum(
             [x.end - x.start for x in transcript if x.feature == "exon"])
-
+        
         if calculate_flanks:
             flanks = length * float(bins[0])/bins[1]
             length_lookup = dict(zip(*(regions, [flanks, 0, flanks])))
@@ -67,20 +71,24 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 
         if flanks > 0:
             length_lookup["exons"] = length
+                
             binned_counts = counts.groupby(level=0).apply(
                 lambda x: bin_counts(x, length_lookup[x.name],
                                      nbins_lookup[x.name]))
         else:
             binned_counts = bin_counts(counts, length, bins)
-
+            
         binned_counts.name = transcript[0].transcript_id
 
         counts_collector.append(binned_counts)
 
     counts_matrix = pd.concat(counts_collector, axis=1)
     counts_matrix = counts_matrix.transpose()
-    counts_matrix = (counts_matrix.fillna(0) + pseudo_count).div(
-        counts_matrix.sum(axis=1), axis=0)
+    counts_matrix = counts_matrix.fillna(0) + pseudo_count
+    if row_norm:
+        counts_matrix = counts_matrix.div(
+            counts_matrix.sum(axis=1), axis=0)
+        
     summed_matrix = counts_matrix.sum()
     summed_matrix.name = "density"
 

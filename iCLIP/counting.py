@@ -241,11 +241,12 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
 
 
 ##################################################
-def count_intervals(getter, intervals, contig, strand=".", dtype='uint32'):
+def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
+                    use_centre=False):
     ''' Count the crosslinked bases accross a transcript '''
 
     if isinstance(getter, pysam.AlignmentFile):
-        getter = make_getter(bamfile=getter)
+        getter = make_getter(bamfile=getter, centre=use_centre)
 
     exon_counts = []
     for exon in intervals:
