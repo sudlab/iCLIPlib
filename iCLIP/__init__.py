@@ -6,3 +6,5 @@ from meta import meta_gene, processing_index, get_binding_matrix, quantile_row_n
 from kmers import pentamer_enrichment, pentamer_frequency
 from distance import calcAverageDistance, findMinDistance, corr_profile
 from clusters import Ph, fdr, get_crosslink_fdr_by_randomisation
+
+import random
