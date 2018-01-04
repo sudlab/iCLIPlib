@@ -147,7 +147,7 @@ class TranscriptCoordInterconverter:
         Passing an array ensures that the transcript is only
         searched once, ensuring O(n) performance rather than
         O(nlogn)'''
-    
+
         try:
             if len(pos) == 0:
                 return np.array([])
@@ -217,7 +217,18 @@ class TranscriptCoordInterconverter:
 
         return sorted(genome_list)
 
+    def genome_interval2transcript(self, interval):
 
+        transcript_list = self.genome2transcript(interval)
+
+        if self.strand == "+":
+            return sorted(transcript_list)
+        else:
+            # half open
+            transcript_list = transcript_list[0] + 1, transcript_list[1] + 1
+            return sorted(transcript_list)
+        
+        
 ##################################################
 def randomiseSites(profile, start, end, keep_dist=True):
     '''Randomise clipped sites within an interval (between start and end)
