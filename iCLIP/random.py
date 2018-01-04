@@ -3,12 +3,12 @@ data'''
 
 import pandas
 
-def count_ratio(test, control):
+def count_ratio(x, test, control):
     '''Sum counts in the test_FLAG_union column of x and divide
     by the sum of the control column of x. If the sum of the control
     column is 0, return Inf'''
     try:
-        return float(test.sum())/control.sum()
+        return float(x[test].sum())/x[control].sum()
     except ZeroDivisionError:
         return pandas.np.inf
     
@@ -41,7 +41,7 @@ def ratio_and_ci(test, control, quantiles=(0.05, 0.95), bootstraps=1000):
                    fun=count_ratio,
                    test="test",
                    control="control")
-    ratio = count_ratio(test=x["test"], control=x["control"])
+    ratio = count_ratio(x, "test", "control")
     try:
         results={"q%s" % q: x for q, x in x_ci.iteritems()}
     except AttributeError:
