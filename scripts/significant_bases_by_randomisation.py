@@ -93,7 +93,13 @@ def main(argv=None):
                             usage=globals()["__doc__"])
 
     parser.add_option("-b", "--bam-file", dest="bam", type="string",
-                      help="BAM file containing iCLIP reads")
+                      help="BAM file containing iCLIP reads", default=None)
+    parser.add_option("-w", "--wig", "--plus-wig", dest="plus_wig", type="string",
+                      help="BigWig file containing signal for already processed sample",
+                      default=None)
+    parser.add_option("--minus-wig", dest="minus_wig", type="string",
+                      help="BigWig file containing signal for sample on minus strand",
+                      default=None)
     parser.add_option("-s", "--spread", dest="spread", type="int",
                       default=15,
                       help="Number of bases each site of each bases"
@@ -137,7 +143,14 @@ def main(argv=None):
     else:
         raise ValueError("Unknown feature type %s" % options.feature)
 
-    bam = iCLIP.make_getter(options.bam, centre=options.centre)
+    if options.bam:
+        bam = iCLIP.make_getter(options.bam, centre=options.centre)
+    elif options.plus_wig:
+        bam = iCLIP.make_getter(plus_wig=options.plus_wig,
+                                minus_wig=options.minus_wig)
+    else:
+        E.error("Please specifiy one of bam file or wig file")
+        sys.exit(1)
 
     results = iCLIP.get_crosslink_fdr_by_randomisation(
         iterator, bam, options.rands, options.spread, pool)
