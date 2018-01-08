@@ -1,5 +1,5 @@
 import re
-import pandas as pd
+import pandas as pd 
 import numpy as np
 import collections
 import itertools
@@ -13,7 +13,23 @@ from counting import count_transcript, count_intervals
 
 ##################################################
 def find_all_matches(sequence, regexes):
+	'''Return start positions of a collection of regexes
 
+	Parameters
+	----------
+	sequence : str
+		String to search in. Usually an RNA or DNA sequence
+	regexs : itr of re.RegEx
+		List of regexs to search :param:`sequence` for.
+		
+	Returns
+	-------
+	pandas.Series of np.array of int
+		Series of arrays where each array is the integer 
+		positions matches for one regex. Index is the regex objects.
+		
+	'''
+		
     def _find_regex(regex):
         matches = regex.finditer(sequence)
         mStarts = [m.start() for m in matches]
@@ -24,20 +40,36 @@ def find_all_matches(sequence, regexes):
 
 ##################################################
 def pentamer_frequency(profile, length, regex_matches, nSpread=15):
-    '''Calculate the frequency of the each of a collection
-    of sequence regexes on the provided read profile, and the
-    coresponding sequence
+    '''Calculate the frequency of overlaps between a list of cross-link
+	sites (possibly extended) and a collection of sites
+	
+	The second collection of site would usually be a Series of ararys of
+	positions as returned by :func:`find_all_matches`.
 
-        :param profile: A profile of the number of reads at each base
-        :type profile: pandas.Series
-        :param length: Length of the sequence represented by profile
-        :param regex_matches: A pandas.Series of the locations of hits
-                              for a set of regexs, as returned by 
-                              find_all_matches
-        :param nSpread: How far either side of each read to consider
-
-        :rtype: pandas.Series with the count of each regex'''
-
+	Parameters
+	----------
+	profile : pandas.Series
+		A profile of the number of cross-links at each base.
+	length : int
+		Length of the sequence represetnted by `profile`.
+	regex_matches : pandas.Series of nd.array of int
+		Each array entry represents a single match on the sequence. Each 
+		array represents a different thing matched (e.g. a different regex)
+		. This structure is would usually be returned by
+		:func:`find_all_matches`.
+	nSpread : int, optional
+		How far either side of a cross-link location to consider when 
+		calculating overlaps (defaults to 15).
+	
+	Returns
+	-------
+	pandas.Series of int
+		Each entry is the number of overlaps between cross-links sites
+		in profile and a single entry in `regex_matches`. Each same index
+		as `regex_matches`.
+		
+	'''
+	
     kmer = len(regex_matches.index.values[0])
     profile = profile.reindex(
         np.arange(-nSpread, length+nSpread-kmer), fill_value=0)
@@ -63,22 +95,74 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
                         randomisations=100,
                         seperate_UTRs=False, spread=15,
                         pool=None):
-    ''' This function calculates the enrichment of pentamers around
-    CLIP'd sites
-
-        :type gtf_chunk_iterator: an iterator that returns lists of CGAT.GTF
-                                  Entries.
-        :type bam: pysam.AlignmentFile
-        :param seperate_UTRs: Treat UTRs as seperate areas from the rest of the
-                              gene. Requires GTF file to contain CDS entries.
-        :param spread: Number of bp around each base to use for sequence.
-        :type fasta: CGAT.IndexedFasta
-        :param pool: If present work will be parallelize across the worker pool
-        :type pool: multiprocessing.Pool
-
-        :rtype: pandas.Series with z-values for each pentamer
-    '''
-
+    ''' This function calculates the z-score of enrichment of kmers around
+    cross-linked sites.
+	
+	Parameters
+	----------
+	gtf_chunk_iterator : iter of list-like of `CGAT.GTF.Entry`
+		An iterator that returns a list-like object containing 
+		`CGAT.GTF.Entry` objects representing a gene or transcript. 
+	bam : *_getter func
+		A getter function, as returned by :func:`make_getter`
+	fasta : CGAT.IndexedFasta
+		Indexed fasta containing the genome sequence to get the transcript
+		sequences from. 
+	kmer_length : int, optional
+		length of kmer to search for enrichment of. All possible kmers of 
+		this length will be tested. Defaults to 5.
+	randomisations : int, optional
+		Number of sequence randomisation to perform in order to determined
+		mean and sd of the frequency of each kmer under a the null model.
+	seperate_UTRs : bool, optional
+		No effect **to be removed**
+	spread : int, optional
+		Number of bases to consider around a clip site when calculating an
+		overlap. Defaults to 15.
+	pool : multiprocessing.Pool, optional
+		If present, work will be parallelized across the worker pool
+		
+	Returns
+	-------
+	pandas.Series of float
+		z-values of the frequency of overlaps between cross-link sites and
+		all kmers. Series is the kmer in question
+		
+	Notes
+	-----
+	
+	For each transcript/gene/collection of intervals in
+	`gtf_chunk_iterator`, the count of cross-link sites is calculated. Each
+	cross-link site is then extended by `spread` bases in both directions. 
+	
+	For every possible kmer, the start positions in the sequence of the
+	transcript is then calculated and the number of times a cross-link
+	site overlaps a kmer start position is counted. 
+	
+	The positions of the cross-link site are then randomized. And the
+	above process is repeated on each of the randomized profiles. 
+	
+	This is performed on introns and exons seperately. 
+	
+	Once this has been performed on all transcripts/genes in the iterator,
+	scores are summed across all transcripts/genes and the mean and
+	standard deviation of the counts for each kmer is calculated across
+	the randomisations. For each kmer :math:`i \in 0,1,...4^kmer` the
+	z-score :math:`z_i` is calculated:
+	
+	.. math::
+		z_i = \frac{observed_counts - \mu_i}{\sigma_i}
+		
+	where :math:`\mu_i` is the mean frequency of overlaps between
+	cross-links and the i*th* kmer across the randomisations and
+	:math:`\sigma_i` is the corresponding standard deviation. 
+	
+	This process can be very time consuming for longer kmers. To help 
+	elleviate this, it can be parrellized accross cores of the machine by
+	providing a `multiprocessing.Pool` object to the `pool` parameter. The
+	task will then be parrellized, gene-wise. 
+	'''
+	
     bases = AMBIGUITY_CODES.keys()
     bases.remove("N")
     kmers = itertools.product('CGAT', repeat=kmer_length)

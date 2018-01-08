@@ -7,7 +7,26 @@ from counting import count_intervals
 
 ##################################################
 def bin_counts(counts, length, nbins):
-
+	"""Aggregate counts into specified number of bins spatial bins.
+	
+	Parameters
+	-----------
+	counts : pandas.Series
+		Series of counts to be binned. Index is position, value is count.
+	length : int
+		Total length of sequence to be binned. The range 0...`length` is 
+		divided into equally sized bins.
+	nbins : int
+		Number of bins to divide the range 0...`length` into. 
+		
+	Returns
+	-------
+	pandas.Series
+		Value of returned Series is the summed counts over all bases that 
+		fall into a particular bin.
+		
+	"""
+	
     bins = np.linspace(0, length, num=nbins+1, endpoint=True)
     if isinstance(counts.index, pd.core.index.MultiIndex):
         bases = counts.index.droplevel()
@@ -33,15 +52,42 @@ def bin_counts(counts, length, nbins):
 def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
               output_matrix=False, calculate_flanks=False,
               pseudo_count=0, row_norm=True):
-    ''' Produce a metagene profile accross the :param gtf_file: from the reads
-    in :param bam_file:.
+    ''' Produce a metagene across a gtf file from CLIP data.
 
-        :type gtf_filelike: file or buffer
-        :type bam: pysam.AlignmentFile
-        :param output_matrix: if true, matrix of binned else None is returned
-
-        :rtype: tuple of (pandas.Series, pandas.DataFrame)
-    counts for each transcript is returned
+	Parameters
+	----------
+	gtffile_like : file or buffer or similar
+		Handle to a GTF file containing annotations to count across
+	bam : func
+		getter function, as created by :func:`make_getter`, from which to 
+		retrieve cross-link data
+	bins : sequence of int, optional
+		Length 3 sequence containing the number of bins in the 5' flank,
+		the body of each transcripts and the 3' flank.
+	flanks : int, optional
+		Length, in bp of the flanking regions.
+	output_matrix : False, optional
+		Output the whole (#transcripts, #bins) matrix alongside the 
+		averaged profile.
+	calculate_flanks : bool, optional
+		Calculate the size of the flanks seperately for each transcript so
+		that each flank bin is the same width as each transcript body bin.
+	pseudo_count : int, optional
+		pseudocount to add to each bin, , minimizing the effect of
+		transcripts with a single or small number of cross-linked bases in
+		a `row_norm`-ed profile. 
+	row_norm : bool, optional
+		Divide counts in each bin by the row-sum for each transcript?
+		
+	Returns
+	-------
+	pandas.Series of float
+		Averaged profile over all transcripts. Will have 
+		`pandas.MultiIndex` with first level corresponding to the region
+		["flank5", "exons", "flank3"]. Second level is the bin within the 
+		regions. 
+		
+    
     '''
     counts_collector = []
     regions = ["flank5", "exons", "flank3"]
@@ -100,11 +146,22 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 
 ##################################################
 def processing_index(interval_iterator, bam, window_size=50):
-    '''Calculate the processing index for the speicied sample, using the
-    provided interval_iterator to get the cleavage sites. The iterator
-    can be GTF or BED, as long as it has end, contig and strand
-    attributes. The end attribute will be used to define the
-    cleavage site.
+    '''Calculate the ratio of processed transcripts to non-processed
+	
+	Parameters
+	----------
+	interval_iterator : CGAT.Bed or CGAT.GTF-like iterator
+		The iterator must yeild objects that have a start, end and strand
+		attribute. Processing index will be calculated around these.
+	bam : *_getter-like function
+		A getter function returned by the `make_getter` function, this will
+		be used to retrieve cross-link counts.
+	window_size : int, optional
+		How far up and downstream of the the processing site to consider.
+	
+	Returns
+	-------
+	
 
     The proccessing index for G genes is defined as:
     

@@ -17,8 +17,20 @@ from utils import TranscriptCoordInterconverter
 
 def find_first_deletion(cigar):
     '''Find the position of the the first deletion in a
-    read from the cigar string, will return 0 if no deletion
-    found '''
+    cigar string.
+
+	Parameters
+    ----------
+    cigar : tuple of tuple of int
+            a cigar string as returned by pysam.AlignedSegment.cigartuples
+
+    Returns
+    -------
+    int
+         The position of the first deletion in the cigar, returns 0 if no
+		 deletion found.
+
+    '''
 
     position = 0
     for operation, length in cigar:
@@ -35,21 +47,35 @@ def find_first_deletion(cigar):
 def getCrosslink(read, centre=False):
     '''Finds the crosslinked base from a pysam read.
 
-    Bases are defined in two ways:
+	Parameters
+	----------
+	read : pysam.AlignedSegment
+	centre : bool
+	         Use centre of read rathter than usual Sugimoto rules
+			 
+	Returns
+	-------
+	int 
+	     Position of crosslink in 0-based genome coordinates.
+		 
+	Notes
+	-----
+	
+	If the read contains at least one deletion base, as identified
+	by the cigar string, then the position of the 5' most deleted
+	base is used.
     
+	If no deletion is present then cross-linked bases are defined in two
+	ways:
+    	
     1.  As in Sugimoto et al, Genome Biology 2012
 
-            The nucleotide preceding the iCLIP cDNAs mapped by Bowtie
-            was used to define the cross link sites identified by
-            truncated cDNAs.
+        The nucleotide preceding the start of the read is 
+		used. Read strand is taken into account, such that for reads
+		with `is_reverse=True`, the base after `aend` is used rather 
+		than the base before `pos`.
 
-            [For reads with deletions] The deleted nucleotide in CLIP
-            and iCLIP cDNAs mapped by Novoalign was used to define the
-            cross-link sites identified by read-through cDNAs. If a
-            cDNA had more than one deletion, we selected the one
-            closest to the beginning of the read.
-
-    2.  (if centre=True) returns the centre base of the read,
+    2.  (if `centre=True`) returns the centre base of the read,
         accounting for splicing etc
 
     '''
@@ -84,29 +110,47 @@ def getCrosslink(read, centre=False):
 
 ##################################################
 def countChr(reads, chr_len, dtype='uint16', centre=False):
-    ''' Counts the crosslinked bases for each read in the pysam rowiterator
-    reads and saves them in pandas Series: those on the positive strand
-    and those on the negative strand. The Series are indexed on genome position,
-    and are sparse.
+    ''' Counts the crosslinked bases for each provided read.
 
-    Cross linked bases are definated as in Sugimoto et al, Genome Biology 2012
-
-        The nucleotide preceding the iCLIP cDNAs mapped by Bowtie was used to
-        define the cross link sites identified by truncated cDNAs.
-
-        [For reads with deletions] The deleted nucleotide in CLIP and iCLIP
-        cDNAs mapped by Novoalign was used to define the cross-link sites
-        identified by read-through cDNAs. If a cDNA had more than one deletion,
-        we selected the one closest to the beginning of the read.
-    
-    The dtype to use internally for storage can be specified. Large types
+	Scans through the provided pysam.rowiterator reads and tallys the
+	number of cross links on each of the positive and negative strand. 
+	
+	Parameters
+	----------
+	reads : iter of reads
+	    Reads to get cross-links from. Most often a pysam.rowiterator
+		returned by pysam.AlignmentFile.fetch
+	chr_len : int
+		Length of contig/region being counted
+	dtype : str
+		dtype to use to store the counts. 
+	centre : bool
+		Use centre of read for cross-link rather than base preceding 5'
+		end
+		
+	Returns
+	-------
+	positive_counts, negative_counts : pandas.Series
+		Counts of cross-linked bases on positive and negative strands. The
+		Series are indexed on genome position and are sparse (see below)
+	count : 
+		total count of cross-linked bases
+	
+	See also
+	--------
+	getCrosslink : gets cross-link position for pysam.AlignedSegment
+	
+	Notes
+	-----  
+    The `dtype` to use internally for storage can be specified. Large types
     reduce the chance of overflow, but require more memory. With 'uint16'
     the largest count that can be handled is 255. Data is stored sparse,
     so memory is less of a problem. Overflow will cause a ValueError.
+	
+	See :func:`getCrosslink` for a description of how the cross-link 
+	position is determined from each read.
 
-    returns a tuple of pandas Series objects, with the positive and negative
-    strand arrays and also a counter object that contains the counts for each
-    type of site. '''
+    '''
 
     pos_depths = collections.defaultdict(int)
     neg_depths = collections.defaultdict(int)
@@ -243,7 +287,35 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
 ##################################################
 def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
                     use_centre=False):
-    ''' Count the crosslinked bases accross a transcript '''
+    ''' Count the crosslinked bases across a set of intervals
+
+	Parameters
+	----------
+	getter : *_getter function or pysam.AlignmentFile
+		The getter function to retrieve the cross-links from. Returned from
+		make_getter.
+	intervals : iter of tuples
+		The intervals to retrieve cross-links from as an iterable of
+		(start, end) tuples.
+	contig : str
+	strand : {"+", "-", "."}
+		If "." then the sum of counts on both strands is returned.
+	dtype : str
+		`numpy` dtype used for storing counts. Larger dtypes reduce chance
+		of overflow, but use more memory. Defaults to 'uint32'.
+	
+	Returns
+	-------
+	pandas.Series
+		Series of integer counts, where the index of the Series is the
+		genome coordinates. Series is spares (i.e. 0 count bases are 
+		excluded) 
+		
+	See also
+	--------
+	make_getter : Access to cross-link data for range of file-types
+	getCrosslink : find cross-link base from pysam.AlignedSegment
+	'''
 
     if isinstance(getter, pysam.AlignmentFile):
         getter = make_getter(bamfile=getter, centre=use_centre)
@@ -267,15 +339,53 @@ def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
 
 ##################################################
 def count_transcript(transcript, bam, flanks=0):
-    '''Count clip sites from a bam and return a Series which transcript 
-    domain coordinates.
-
-        :type transcript: list of CGAT.GTF.Entry or similar
-        :type bam: pysam.AlignmentFile
-        :param flanks: If specified, flanks of this length are counted
-                       and returned to the flank3 and flank5 section
-                       of the now multiindexed return series
-        :rtype: pandas.Series
+    '''Count clip cross-link sites across a transcript
+	
+	Provided with a complete transcript, count_transcript returns all 
+	cross-links in the transcript and returns counts in transcript domain
+	coordinates.
+	
+	Parameters
+    ----------
+	transcript : iter of `CGAT.GTF.Entry` objects
+		The transcript to be counted over. Usually as returned by one of
+		`CGAT.GTF` iterators such as `CGAT.GTF.transcript_iterator` or
+		`CGAT.GTF.flat_gene_iterator`
+	bam : *_getter function
+		getter function to retrieve crosslinks from, as returned by 
+		:func:`make_getter`.
+	flanks : int
+	    Length of 5' and 3' flanks in bp to count on either end of the 
+		transcript. Note: changes index type of returned Series.
+		
+	Returns
+	-------
+	pandas.Series
+		Series of counts. Inner-most level of the index is the coordinates
+		in the transcript domain (see below). If `flanks` > 0 then 
+		will have MultiIndex (see below).
+		
+	See also
+	--------
+	make_getter : Access to cross-link data for range of file-types.
+	getCrosslink : find cross-link base from pysam.AlignedSegment.
+	TranscriptCoordInterconverter : Conversion between genome and
+		transcript coordinates.
+    Notes
+	-----
+	
+	Returns coordinates in the transcript domain. That is the base
+	corresponding to the TSS of the transcript will be base 0 and the 
+	bases are numbered 0 to sum(length of exons). Introns are excluded both
+	from the counting and from the coordinates. Strand is also accounted
+	for. 
+	
+	This function can also return flanking regions upstream and downstream
+	of the transcript. This is specified by `flanks`. If requested, the
+	returned Series will have a `pandas.MultiIndex`. The inner level will
+	correspond to the base and the outer level to whether the inner level
+	refers to the the 5' flank ('flank5'), the 3' flank ('flank3') or the 
+	transcript ('exon')
 
     '''
 
