@@ -28,25 +28,80 @@ def IUPAC2Regex(sequence):
 
 ##################################################
 class TranscriptCoordInterconverter:
-    ''' A class to interconvert between genome co-ordinates
-    and transcript co-ordinates. Implemented as a class because
-    there are expected to be many calls against the same transcript,
-    so time can be saved by precomputation
+    '''Interconvert between genome domain and transcript domain 
+    coordinates.
+    
+    As there are expected to be many calls against the same transcript,
+    time can be saved by precomputation. Overlapping exons are merged.
+
+    Parameters
+    ----------
+    transcript : sequence of `CGAT.GTF.Entry`
+        Set of GTF entires representing a transcript.
+    introns : bool, optional
+        Use introns instead of exons (see below).
+
+    Attributes
+    ----------
+    transcript_id : str
+        Value of the transcript_id field of the transcript in quesiton.
+        Taken from the transcript_id field of the first entry in 
+        `transcript`.
+    strand : str
+        Strand of the transcript. Taken from the strand field of the first
+        entry in `transcript`.
+    offset : int
+        Position of the start of the transcript in genome coordinates
+    genome_intervals : list of tuples of int
+        Coordinates of exons (or introns) in genome space as the difference
+        from `offset`. These are sorted in transcript order (see below)
+    transcript_intervals : list of tuples of int  
+        Coordinates of exons (or introns) in transcript space. That is
+        absolute distance from transcription start site after splicing.
+    length : int
+        Total length of intervals (exons or introns) in the transcript
+
+    Notes
+    -----
+
+    Imagine the following transcript:
+
+        chr1  protein_coding  exon  100  108   .  -  .  transcript_id "t1"; gene_id "g1";
+        chr1  protein_coding  exon  112  119   .  -  .  transcript_id "t1"; gene_id "g1";
+        chr1  protein_coding  exon  100  108   .  -  .  transcript_id "t1"; gene_id "g1";      
+
+    We can visualise the relationship between the different coordinate
+    domains as below:
+
+        Genome coordinates:    1         1         1         1
+                               0         1         2         3       
+                               0123456789012345678901234567890
+        Transcript:            |<<<<<<|----|<<<<<|-----|<<<<<|
+        Transcript Coords:      2             1              0
+                               10987654    3210987     6543210
+          with `introns=True`:         8765       43210   
+
+    Thus the intervals representing the exons in the transcript domain are
+    (0, 7), (7,14), (14, 22), and the genome base 115 corresponds to
+    transcript base 10. 
+
+    
 
     TranscriptCoordInterconverter.genome2transcript should be the
     interverse of TranscriptCoordInterconverter.transcript2genome.
 
-    That is
+    That is if
 
-    if myConverter = TranscriptCoordInterverter(transcript)
+        myConverter = TranscriptCoordInterverter(transcript)
     
     then
     
-    myConverter.genome2transcript(myConverter.transcript2genome(x)) == x
+        myConverter.genome2transcript(myConverter.transcript2genome(x)) == x
     
     and
 
-    myConverter.transcript2genome(myConverter.genome2transcript(x)) == x'''
+        myConverter.transcript2genome(myConverter.genome2transcript(x)) == x
+    '''
 
     def __init__(self, transcript, introns=False):
         ''' Pre compute the conversions for each exon '''
@@ -87,8 +142,45 @@ class TranscriptCoordInterconverter:
         self.length = transcript_intervals[-1][1]
 
     def genome2transcript(self, pos):
-        ''' Convert genome coordinate into transcript coordinates.
-        pos can be a single value or a nunpy array like object.
+        '''Convert genome coordinate into transcript coordinates.
+
+        Can be a single coordinate or a array-like of coordinates
+
+        Parameters
+        ----------
+        pos : int or array-like or int
+            positions, in the genome domain, to be converted
+        
+        Returns
+        -------
+        int or numpy.array
+            The position, or positions converted into the transcript
+            domain.
+
+        Raises
+        ------
+        ValueError
+            If the supplied genome position is not in the transcript.
+            This could be because it falls into one of the introns
+            (or exons if the converter was created with ``introns=True``,
+            or because the requested coordinates are before the start or
+            after the end of the transcript.
+
+        See Also
+        --------
+        transcript2genome : The inverse of this operation
+        genome_interval2transcript : Convert intervals rather than single 
+            positions
+
+        Notes
+        -----
+
+        A key point to be aware of is that this function converts positions
+        not intervals. Because of the zero-based half-open nature of python
+        coordinates, you can't just convert the start and end positions
+        into the transcript space. Use :method:`genome_interval2transcript`
+        for this.
+
         Passing an array ensures that the transcript is only
         searched once, ensuring O(n) performance rather than
         O(nlogn)'''
@@ -142,11 +234,47 @@ class TranscriptCoordInterconverter:
                          (pos[i], relative_pos[i], self.transcript_id, self.genome_intervals))
 
     def transcript2genome(self, pos):
-        ''' Convert transcript coodinate into genome coordinate,
-        pos can be a single value or a nunpy array like object.
+        '''Convert transcript coordinates into genome coordinates.
+
+        Can be a single coordinate or a array-like of coordinates
+
+        Parameters
+        ----------
+        pos : int or array-like or int
+            positions, in the transcript domain, to be converted
+        
+        Returns
+        -------
+        int or numpy.array
+            The position, or positions converted into the genome
+            domain.
+
+        Raises
+        ------
+        ValueError
+            If the supplied genome position is not in the transcript.
+            This would generatlly be because the supplied genome is
+            either negative or greater than the length of the transcript.
+
+        See Also
+        --------
+        genome2transcript : The inverse of this operation
+        transcript_interval2genome_intervals : Convert intervals rather than
+        single positions
+
+        Notes
+        -----
+
+        A key point to be aware of is that this function converts positions
+        not intervals. Because of the zero-based half-open nature of python
+        coordinates, you can't just convert the start and end positions
+        into the transcript space. Use 
+        :method:`transcript_interval2genome_intervals` for this.
+
         Passing an array ensures that the transcript is only
         searched once, ensuring O(n) performance rather than
         O(nlogn)'''
+        
 
         try:
             if len(pos) == 0:
@@ -190,9 +318,50 @@ class TranscriptCoordInterconverter:
                    (pos[i], self.transcript_id))
 
     def transcript_interval2genome_intervals(self, interval):
-        '''Take an interval in transcript coordinates and returns
-        a list of intervals in genome coordinates representing the
-        interval on the genome '''
+        '''Convert an interval in transcript coordinates and convert to
+        a list of intervals in genome coordinates.
+
+        Returns a list because a single interval might cross several
+        exons, and the returned list of intervals would exclude the 
+        intronic sequence.
+
+        Parameters
+        ----------
+        interval : tuple of int
+            Tuple with zero-based half open interval of form (start, end)
+            in the transcript domain.
+
+        Returns
+        -------
+        list of tuples
+            List of zero-based, half open (start, end) tuples that encompas
+            the same bases as described by `interval` but in the genome
+            domain.
+
+        Raises
+        ------
+        ValueError
+            If the supplied strart or end is not in the transcript.
+
+        See Also
+        --------
+        transcript2genome : Does the actaul conversion
+        genome_interval2transcript : Almost the inverse of this
+
+        Notes
+        -----
+
+        Because this method returns possibly discontinous intervals
+        that will always only contain exonic regions (or only intronic if
+        the converter was created with ``introns=True``), it is not quite
+        guarenteed to be the inverse of genome_interval2transcript. This 
+        is because a single interval that spans both introns and exons 
+        can be passed to that method (as long as both start and end are
+        exonic), and will be converted to a single interval that covers
+        the exon bases, but converting the same interval back would give
+        to intervals covering only the exonic parts.
+        '''
+        
 
         outlist = []
         for exon in self.transcript_intervals:
@@ -218,7 +387,49 @@ class TranscriptCoordInterconverter:
         return sorted(genome_list)
 
     def genome_interval2transcript(self, interval):
+        '''Convert an interval in genomic coordinates into an interval
+        in transcript-coordinates.
 
+        Parameters
+        ----------
+        interval : tuple of int
+            Tuple with zero-based half open interval of form 
+        (``start``, ``end``) in the genome domain. ``start`` < ``end``
+
+        Returns
+        -------
+        tuple of int
+            Half open (start, end) tuple starts and ends at the same bases
+            as the interval described in `interval`, but in transcript 
+            domain coordinates. 
+
+        Raises
+        ------
+        ValueError
+            If the supplied strart or end is not in the transcript.
+
+        See Also
+        --------
+        genome2transcript : Does the actaul conversion
+        genome_interval2transcript : Almost the inverse of this
+
+        Notes
+        -----
+
+        This is not quite the inverse of 
+        :method:`transcript_interval2genome_intervals`, because of how
+        intervals that split across introns are handled. See
+        :method:`transcript_interval2genome_intervals` for details of the
+        difference.
+
+        .. warning::
+            This method current has a known issue where if the interval
+            includes the last base of the transcripts (one the +ve strand)
+            or the first base (on the -ve strand), an error will occur. I
+            aim to fix this before release. 
+
+        '''
+        
         transcript_list = self.genome2transcript(interval)
 
         if self.strand == "+":
@@ -231,8 +442,31 @@ class TranscriptCoordInterconverter:
         
 ##################################################
 def randomiseSites(profile, start, end, keep_dist=True):
-    '''Randomise clipped sites within an interval (between start and end)
-    if keep_dist is true, then reads on the same base are kept togehter'''
+    '''Randomise clipped sites within an interval.
+
+    If keep_dist is true, then reads on the same base are kept togehter,
+    preverving the distribution of per-base read counts.
+
+    Parameters
+    ----------
+    profile : pandas.Series
+        Cross-link profile to be randomised. Index is base, the value is
+        the number of cross-links at that base.
+    start : int
+        Lowest bases at which allow randomised bases to fall.
+    end : int
+        Highest base at which to allow randomised bases to fall.
+    keep_dist : bool, optional
+        Maintain the count-per-base distribution by moving cross-links on
+        the same base together. 
+
+    Returns
+    -------
+    pandas.Series
+        Randomised profile, in sparse format.
+
+    
+'''
 
     if keep_dist:
 
@@ -252,7 +486,46 @@ def randomiseSites(profile, start, end, keep_dist=True):
 
 ##################################################
 def spread(profile, bases, reindex=True, right_bases=None):
-       
+    '''Extend cross-link sites in both directions.
+
+    By default the cross-links are "spread" by the same amount in both
+    directions. However, providing `right_bases` will make the spreading
+    happen `bases` in the left direction and `right_bases` in the right
+    direction. 
+
+    Parameters
+    ----------
+    profile : pandas.Series
+        Cross-link profile with positions to be spread
+    bases : int
+        Number of bases to spread the cross-link sites by. operates both
+        left and right unless `right_bases` is provided.
+    reindex : bool, optional
+        Should the profile be reindexed before spreading. Only set
+        ``False`` if the profile has already been reindexed (see below).
+    right_bases : int, optional
+        If set with extend `bases` in the left direction and `right_bases`
+        in the right direction. 
+
+    Returns
+    -------
+    pandas.Series
+        The profile of the spread crosslinked bases. This will not be in 
+        sparse form (will contain 0s).
+
+    Notes
+    -----
+
+    The `reindex` parameter is provided as a covenience for when this has
+    already been done. The following would need to be done if 
+    ``reindex=False``:
+
+        start = int(profile.index.min() - window)
+        end = int(profile.index.max() + window+1)
+        profile = profile.reindex(np.arange(start, end), fill_value=0)
+
+    '''
+    
     if right_bases:
         window = bases+right_bases
     else:

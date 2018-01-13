@@ -1,3 +1,10 @@
+"""Functions in this module produce profiles of binding across sets of
+genes/transcripts, or provide functions for normalizing/aggregating
+such profiles.
+
+"""
+
+
 import numpy as np
 import pandas as pd
 import CGAT.GTF as GTF
@@ -5,28 +12,29 @@ import CGAT.GTF as GTF
 from counting import count_transcript
 from counting import count_intervals
 
+
 ##################################################
 def bin_counts(counts, length, nbins):
-	"""Aggregate counts into specified number of bins spatial bins.
-	
-	Parameters
-	-----------
-	counts : pandas.Series
-		Series of counts to be binned. Index is position, value is count.
-	length : int
-		Total length of sequence to be binned. The range 0...`length` is 
-		divided into equally sized bins.
-	nbins : int
-		Number of bins to divide the range 0...`length` into. 
-		
-	Returns
-	-------
-	pandas.Series
-		Value of returned Series is the summed counts over all bases that 
-		fall into a particular bin.
-		
-	"""
-	
+    """Aggregate counts into specified number of bins spatial bins.
+
+    Parameters
+    -----------
+    counts : pandas.Series
+        Series of counts to be binned. Index is position, value is count.
+    length : int
+        Total length of sequence to be binned. The range 0...`length` is
+        divided into equally sized bins.
+    nbins : int
+        Number of bins to divide the range 0...`length` into.
+
+    Returns
+    -------
+    pandas.Series
+        Value of returned Series is the summed counts over all bases that
+        fall into a particular bin.
+
+    """
+
     bins = np.linspace(0, length, num=nbins+1, endpoint=True)
     if isinstance(counts.index, pd.core.index.MultiIndex):
         bases = counts.index.droplevel()
@@ -34,7 +42,7 @@ def bin_counts(counts, length, nbins):
         bases = counts.index
 
     if counts.sum() > 0:
-        
+
         binned_counts = counts.groupby(
             list(pd.cut(bases,
                         bins=bins,
@@ -44,7 +52,7 @@ def bin_counts(counts, length, nbins):
         binned_counts = binned_counts.reindex(range(nbins), fill_value=0)
     else:
         binned_counts = pd.Series([0]*nbins, index=range(nbins))
-    
+
     return binned_counts
 
 
@@ -52,46 +60,47 @@ def bin_counts(counts, length, nbins):
 def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
               output_matrix=False, calculate_flanks=False,
               pseudo_count=0, row_norm=True):
-    ''' Produce a metagene across a gtf file from CLIP data.
+    ''' Produce a metagene across a gtf file from CLIP data, where each
+    gene is divided into the same number of bins.
 
-	Parameters
-	----------
-	gtffile_like : file or buffer or similar
-		Handle to a GTF file containing annotations to count across
-	bam : func
-		getter function, as created by :func:`make_getter`, from which to 
-		retrieve cross-link data
-	bins : sequence of int, optional
-		Length 3 sequence containing the number of bins in the 5' flank,
-		the body of each transcripts and the 3' flank.
-	flanks : int, optional
-		Length, in bp of the flanking regions.
-	output_matrix : False, optional
-		Output the whole (#transcripts, #bins) matrix alongside the 
-		averaged profile.
-	calculate_flanks : bool, optional
-		Calculate the size of the flanks seperately for each transcript so
-		that each flank bin is the same width as each transcript body bin.
-	pseudo_count : int, optional
-		pseudocount to add to each bin, , minimizing the effect of
-		transcripts with a single or small number of cross-linked bases in
-		a `row_norm`-ed profile. 
-	row_norm : bool, optional
-		Divide counts in each bin by the row-sum for each transcript?
-		
-	Returns
-	-------
-	pandas.Series of float
-		Averaged profile over all transcripts. Will have 
-		`pandas.MultiIndex` with first level corresponding to the region
-		["flank5", "exons", "flank3"]. Second level is the bin within the 
-		regions. 
-		
-    
+    Parameters
+    ----------
+    gtffile_like : file or buffer or similar
+        Handle to a GTF file containing annotations to count across
+    bam : func
+        getter function, as created by :func:`make_getter`, from which to
+        retrieve cross-link data
+    bins : sequence of int, optional
+        Length 3 sequence containing the number of bins in the 5' flank,
+        the body of each transcripts and the 3' flank.
+    flanks : int, optional
+        Length, in bp of the flanking regions.
+    output_matrix : False, optional
+        Output the whole (#transcripts, #bins) matrix alongside the
+        averaged profile.
+    calculate_flanks : bool, optional
+        Calculate the size of the flanks seperately for each transcript so
+        that each flank bin is the same width as each transcript body bin.
+    pseudo_count : int, optional
+        pseudocount to add to each bin, , minimizing the effect of
+        transcripts with a single or small number of cross-linked bases in
+        a `row_norm`-ed profile.
+    row_norm : bool, optional
+        Divide counts in each bin by the row-sum for each transcript?
+
+    Returns
+    -------
+    pandas.Series of float
+        Averaged profile over all transcripts. Will have
+        `pandas.MultiIndex` with first level corresponding to the region
+        ["flank5", "exons", "flank3"]. Second level is the bin within the
+        regions.
+
+
     '''
     counts_collector = []
     regions = ["flank5", "exons", "flank3"]
-    
+
     try:
         if flanks == 0:
             bins = bins[1]
@@ -102,13 +111,13 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
     except TypeError:
         if flanks > 0:
             nbins_lookup = {x: bins for x in bins}
-   
+
     for transcript in GTF.transcript_iterator(
             GTF.iterator(gtf_filelike)):
-      
+
         length = sum(
             [x.end - x.start for x in transcript if x.feature == "exon"])
-        
+
         if calculate_flanks:
             flanks = length * float(bins[0])/bins[1]
             length_lookup = dict(zip(*(regions, [flanks, 0, flanks])))
@@ -117,13 +126,13 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 
         if flanks > 0:
             length_lookup["exons"] = length
-                
+
             binned_counts = counts.groupby(level=0).apply(
                 lambda x: bin_counts(x, length_lookup[x.name],
                                      nbins_lookup[x.name]))
         else:
             binned_counts = bin_counts(counts, length, bins)
-            
+
         binned_counts.name = transcript[0].transcript_id
 
         counts_collector.append(binned_counts)
@@ -134,7 +143,7 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
     if row_norm:
         counts_matrix = counts_matrix.div(
             counts_matrix.sum(axis=1), axis=0)
-        
+
     summed_matrix = counts_matrix.sum()
     summed_matrix.name = "density"
 
@@ -147,24 +156,28 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 ##################################################
 def processing_index(interval_iterator, bam, window_size=50):
     '''Calculate the ratio of processed transcripts to non-processed
-	
-	Parameters
-	----------
-	interval_iterator : CGAT.Bed or CGAT.GTF-like iterator
-		The iterator must yeild objects that have a start, end and strand
-		attribute. Processing index will be calculated around these.
-	bam : *_getter-like function
-		A getter function returned by the `make_getter` function, this will
-		be used to retrieve cross-link counts.
-	window_size : int, optional
-		How far up and downstream of the the processing site to consider.
-	
-	Returns
-	-------
-	
+
+    Parameters
+    ----------
+    interval_iterator : CGAT.Bed or CGAT.GTF-like iterator
+        The iterator must yeild objects that have a start, end and strand
+        attribute. Processing index will be calculated around these.
+    bam : *_getter-like function
+        A getter function returned by the `make_getter` function, this will
+        be used to retrieve cross-link counts.
+    window_size : int, optional
+        How far up and downstream of the the processing site to consider.
+
+    Returns
+    -------
+    int
+        processing index averaged over all processing sites given.
+
+    Notes
+    -----
 
     The proccessing index for G genes is defined as:
-    
+
     .. math::
 
        pi = log_2( \frac{\sum_{i=1}^{G} N_i^{PM}}{\sum_{i=1}^{G} N_i^M})
@@ -175,9 +188,9 @@ def processing_index(interval_iterator, bam, window_size=50):
 
     n_pm = 0
     n_m = 0
- 
+
     for site in interval_iterator:
-    
+
         if site.strand == "+":
             pos = site.end
         elif site.strand == "-":
@@ -218,32 +231,44 @@ def get_binding_matrix(bamfile,
                        bin_size=25,
                        left_margin=500,
                        right_margin=10000):
-    ''' Returns a matrix containing the binding densities across all the
-    genes in the iterator binned into equal size bins of :param bin_size:
-    base pairs.  Transcripts/genes are collapsed to just their exons, but
+    '''Get matrix containing the binding counts across all the
+    genes in the iterator binned into equal sized bins
+
+    Transcripts/genes are collapsed to just their exons, but
     sequence up and down stream of the ends of the transcript/gene is
-    added. Unclipped transcripts are skipped.
+    added. Zero count transcripts/genes are excluded.
 
-      :param bam: BAM file with iCLIP reads
-      :param gtflike_iterator: iterator returning bundles of CGAT.GTF
-                  objects.  Note overlaping exons will be merged.
-      :param align_at: Position in transcript at which to align profiles
-                  from each transcript. The 0 default mean the start of the
-                  gene/transcript.  Can be int or a Series index on
-                  transcript_id with different in alignment positions
-                  for each gene/transcript. 
-      :param bin_size: Number of bases to include in a single bin. Depth
-                  will be summed across bins
-      :param left_margin: Number of bases to include to the left of the
-                   alignment point
-      :param right_margin: Ditto but to the left.
+    Parameters
+    ----------
+    bam : *_getter func
+        Function to access cross-links from, as returned by
+        :func:`make_getter`
+    gtflike_iterator : iter of CGAT.GTF.Entry
+        iterator returning sequences of CGAT.GTF.Entry objects. Note
+        overlapping exons will be merged.
+    align_at : int or pandas.Series, optional
+        Position in transcript at which to align profiles form each
+        transcript. The defaults means the start of the gene/transcript.
+        If int same position is used for every gene/transcript. If
+        `pandas.Series`, index should contain transcript_ids.
+    bin_size : int, optional
+        Number of bases to include in a single bin. Depth will be summed
+        across these bins.
+    left_margin, right_margin : int, optional
+        Number of bases to include to the left and right of the alignment
+        point.
 
-      :rtype: A dataframe with columns being bins and rows being genes. '''
+    Returns
+    -------
+    pandas.Dataframe
+        Columns are bins and row are genes.
+
+    '''
 
     matrix = []
     for gene in gtflike_iterator:
         length = sum(e[1] - e[0] for e in GTF.asRanges(gene, "exon"))
-        
+
         try:
             align_this_at = align_at[gene[0].transcript_id]
         except TypeError:
@@ -261,7 +286,7 @@ def get_binding_matrix(bamfile,
 
         flank3 = counts["region"] == "flank3"
         flank5 = counts["region"] == "flank5"
-    
+
         counts.loc[flank5, "base"] = counts.loc[flank5, "base"] - flanks
         counts.loc[flank3, "base"] = counts.loc[flank3, "base"] + length
 
@@ -283,10 +308,29 @@ def get_binding_matrix(bamfile,
 
 def quantile_row_norm(matrix, quantile=0.99, min_value='auto'):
     '''Normalise the rows of a matrix so that 1 corresponds to the given
-    quantile. :param min_value: allows a value to be provided so that
+    quantile.
+
+    :param min_value: allows a value to be provided so that
     the minimum normalisation value will never be smaller than this.
     If set to 'auto' then the smallest non-zero value across the whole
-    matrix will be found and used'''
+    matrix will be found and used
+
+    Parameters
+    ----------
+    matrix : pandas.DataFrame
+        Matrix of data for which the rows are to be normalized
+    quantile : float, optional
+        Quantile to use as the normalizer, defaults to 0.99 thus removing
+        only the most outlying values.
+    min_value : float or "auto"
+        The minimum value the normalizer can take. This prevents rows being
+        normalized by 0. If '``auto``' then for each for the smallest non
+        zero value is used.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Same row and column indexes as `matrix`. Rows are now normalized'''
 
     if min_value=='auto':
         min_value = matrix[matrix > 0].min().min()
@@ -298,7 +342,19 @@ def quantile_row_norm(matrix, quantile=0.99, min_value='auto'):
 
 
 def sum_row_norm(matrix):
-    '''Normalise the rows of a matrix by the sum of the row'''
+    '''Normalise the rows of a matrix by the sum of the row
+
+    Parameters
+    ----------
+    matrix : pandas.DataFrame
+        Matrix over which to normalise rows
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexes will be identical to `matrix`
+
+    '''
 
     normed_matrix = matrix.apply(lambda x: x/x.sum())
 
@@ -307,7 +363,23 @@ def sum_row_norm(matrix):
 
 def compress_matrix(matrix, nrows=None, ncols=None):
     '''Compress a matrix to a new number of rows/columns. Cells
-    in the matrix are collapsed by averaging. Assumes matrix is sorted'''
+    in the matrix are collapsed by averaging. Assumes matrix is sorted
+
+    Parameters
+    ----------
+    matrix : pandas.DataFrame
+        matrix to be compressed. Index(s) must be numeric.
+    nrows, nocls : int
+        Number of rows/columns in the output matrix. If ``None`` then will
+        be same as input matrix.
+
+    Returns
+    -------
+    pandas.DataFrame
+        If `nrows`/`ncols` is ``None`` then the corresponding index will
+        be unchanged. Otherwise, index will be integer 0 to `nrows`/`ncols`
+        .
+    '''
 
     if ncols:
         groups, bins = pd.cut(matrix.columns.values, ncols,
@@ -320,4 +392,3 @@ def compress_matrix(matrix, nrows=None, ncols=None):
         matrix = matrix.groupby(groups).mean()
 
     return matrix
-
