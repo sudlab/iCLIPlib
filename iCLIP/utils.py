@@ -548,6 +548,10 @@ def rand_apply(profile, exon, n, func, keep_dist=False,
     '''Randomise a profile multiple times and apply a function
     to each randomised profile.
 
+    Parameters
+    ----------
+    
+
         :param profile: a profile with the number of reads at each base
         :type profile: pandas.Series
         :param exon: a GTF entry specifiying the boundaries to randomiseSites
