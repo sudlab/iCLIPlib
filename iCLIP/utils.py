@@ -547,22 +547,36 @@ def rand_apply(profile, exon, n, func, keep_dist=False,
                *args, **kwargs):
     '''Randomise a profile multiple times and apply a function
     to each randomised profile.
-
+    
     Parameters
     ----------
-    
-
-        :param profile: a profile with the number of reads at each base
-        :type profile: pandas.Series
-        :param exon: a GTF entry specifiying the boundaries to randomiseSites
-                     between.
-        :type exon: CGAT.GTF.Entry
-        :param n: The number of randomisations to apply
-        :param func: The function to apply to each randomisation
-        :param keep_dist: Keep the read-per-base distribution constant
-
-        :rtype: pandas.Series or pandas.DataFrame
-
+    profile : pandas.Series
+        profile to randomise, as produced by a *_getter function. 
+    exon : CGAT.GTF.Entry or iCLIP.LiteExon
+        Object with :attribute:`start` and :attribute:`end` specifying the
+        boundaries to randomise between.
+    n : int
+        The number of randomisations to perform
+    func : callable
+        A function-like object to call on each randomised profile. The
+        profile will be passed as the first argument to the function.
+    keep_dist : bool, optional
+        Maintain cross-links-per-base distribution when randomising
+    *args, **kwargs : 
+        Further arguments to `func`
+        
+    Returns
+    -------
+    pandas.Series or pandas.DataFrame
+        Return type depends on the return type of `func`. Generally a 
+        Series with the entries as the same return type as `func`. However,
+        if `func` returns Series and all series are of the same length, 
+        a pandas.DataFrame may be returned.
+        
+    See Also
+    --------
+    randomiseSites : Does the actual work of randomising.
+      
     '''
 
     dummy = pd.Series(range(n))
