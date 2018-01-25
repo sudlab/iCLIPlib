@@ -1,0 +1,111 @@
+iCLIP2BigWig:
+    stdin: SRSF7-Chr1-R1.bam
+    outputs: [SRSF7-Chr1-R1_to_plus.bw, SRSF7-Chr1-R1_to_minus.bw]
+    references: [SRSF7-Chr1-R1_plus.bw, SRSF7-Chr1-R1_minus.bw]
+    options: iCLIP2bigWig.py SRSF7-Chr1-R1_to --random-seed=1234567890
+
+iCLIP2BigWig_centre:
+    stdin: SRSF7-Chr1-R1.bam
+    outputs:  [SRSF7-Chr1-R1_centre_to_plus.bw, SRSF7-Chr1-R1_centre_to_minus.bw]
+    references: [SRSF7-Chr1-R1_centre_plus.bw, SRSF7-Chr1-R1_centre_minus.bw]
+    options: iCLIP2bigWig.py SRSF7-Chr1-R1_centre_to -c --random-seed=1234567890
+
+calculateiCLIPReproducility:
+    outputs: [stdout]
+    references: [reproducibility_bam.tsv]
+    options: calculateiCLIPReproducibility.py %DIR%/SRSF7-Chr1-R1.bam %DIR%/SRSF7-Chr1-R2.bam -c chr1 -L /dev/null
+
+count_clip_sites_bam:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [count_bam.tsv]
+    options: count_clip_sites.py %DIR%/SRSF7-Chr1-R1.bam -f gene  -L /dev/null
+
+count_clip_sites_bam_centre:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [count_bam_centre.tsv]
+    options: count_clip_sites.py %DIR%/SRSF7-Chr1-R1.bam -f gene  -L /dev/null -c
+
+count_clip_sites_bw:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [count_bam.tsv]
+    options: count_clip_sites.py -f gene -L /dev/null --plus-bw=%DIR%/SRSF7-Chr1-R1_plus.bw --minus-bw=%DIR%/SRSF7-Chr1-R1_minus.bw
+
+count_clip_sites_transcripts:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [count_bam_transcripts.tsv]
+    options: count_clip_sites.py %DIR%/SRSF7-Chr1-R1.bam -f transcript -L /dev/null
+
+count_clip_sites_exons:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [count_bam_exons.tsv]
+    options: count_clip_sites.py %DIR%/SRSF7-Chr1-R1.bam -f exon -L /dev/null
+
+iCLIP_bam2geneprofile:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [gene_profile.tsv]
+    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null
+    
+iCLIP_bam2geneprofile_bw:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [gene_profile.tsv]
+    options: iCLIP_bam2geneprofile.py --plus-wig=%DIR%/SRSF7-Chr1-R1_plus.bw --minus_wig=%DIR%/SRSF7-Chr1-R1_minus.bw -L /dev/null
+
+iCLIP_bam2geneprofile_centre:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [gene_profile_centre.tsv]
+    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --centre
+
+iCLIP_bam2geneprofile_nonorm:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [gene_profile_nonorm.tsv]
+    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --no-gene-norm
+
+iCLIP_bam2geneprofile_scaleflanks:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [gene_profile_scaleflank.tsv]
+    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --scale-flanks
+
+iCLIP_bam2geneprofile_scaleflanks:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [gene_profile_pseudo.tsv]
+    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --pseudo_count=1
+
+iCLIP_bam2heatmap:
+    outputs: [stdout]
+    references: [heatmap.tsv]
+    options: iCLIP_bam2heatmap.py -g %DIR%/geneset.gtf.gz %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --no-plot
+
+iCLIP_bam2heatmap_end:
+    outputs: [stdout]
+    references: [heatmap_end.tsv]
+    options: iCLIP_bam2heatmap.py -g %DIR%/geneset.gtf.gz %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --no-plot -a end
+
+iCLIP_bam2heatmap_transcript:
+    outputs: [stdout]
+    references: [heatmap_transcripts.tsv]
+    options: iCLIP_bam2heatmap.py -g %DIR%/geneset.gtf.gz %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --no-plot -f transcript
+
+iCLIP_bam2heatmap_sum:
+    outputs: [stdout]
+    references: [heatmap_sum.tsv]
+    options: iCLIP_bam2heatmap.py -g %DIR%/geneset.gtf.gz %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --no-plot -n sum
+
+iCLIP_bam2heatmap_quantile:
+    outputs: [stdout]
+    references: [heatmap_quantile.tsv]
+    options: iCLIP_bam2heatmap.py -g %DIR%/geneset.gtf.gz %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --no-plot -n quantile
+
+
+
+
