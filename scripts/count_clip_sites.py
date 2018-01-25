@@ -51,7 +51,7 @@ sys.path.insert(1, os.path.join(
     ,".."))
 
 import iCLIP
-print iCLIP.__file__
+
 def main(argv=None):
     """script main.
     parses command line options in sys.argv, unless *argv* is given.
@@ -132,7 +132,10 @@ def main(argv=None):
             try:
                 exon_id = feature[0].exon_id
             except AttributeError:
-                exon_id = "missing"
+                try:
+                    exon_id = feature[0].exon_number
+                except AttributeError:
+                    exon_id = "missing"
 
             gene_id = feature[0].gene_id
             transcript_id = feature[0].transcript_id
@@ -141,11 +144,12 @@ def main(argv=None):
             exon_id = "NA"
             gene_id = feature[0].gene_id
             transcript_id = feature[0].transcript_id
-
+            intron_counts = float(intron_counts)
+            
         outlines.append([gene_id,
                          transcript_id,
                          exon_id,
-                         str(exon_counts),
+                         str(float(exon_counts)),
                          str(intron_counts)])
 
     options.stdout.write("\t".join(["gene_id",

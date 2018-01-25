@@ -236,10 +236,10 @@ def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
 
     try:
         reads = bamfile.fetch(reference=contig,
-                              start=start-1,
+                              start=max(start-1, 0),
                               end=end+1)
     except ValueError as e:
-        E.debug(e)
+        E.warning(e)
         E.warning("Skipping intervals on contig %s as not present in bam"
                   % contig)
         return pd.Series()
