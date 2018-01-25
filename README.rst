@@ -33,8 +33,7 @@ and a number of scripts that implement example analyses.
 The requirements are CGAT, pysam, numpy and pandas.
 The pipeline has numerous other requirements. 
 
-.. warning::
-  This code is mostly undocumented at the moment. I'm also in the middle of refactoring the code.  It is untested outside of its developement environment. 
+The documents are currently in the docs folder and in the code. Look out for them on readthedocs very soon.
 
 
 

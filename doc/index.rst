@@ -70,6 +70,7 @@ Various normalisation approaches can be applied.
     meta.meta_gene
     meta.get_binding_matrix
     meta.processing_index
+    meta.get_window
     
 users with more complex requirements might also want to look at the
 underlying binning function.
