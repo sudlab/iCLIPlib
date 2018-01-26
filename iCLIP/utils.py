@@ -64,14 +64,14 @@ class TranscriptCoordInterconverter:
     Notes
     -----
 
-    Imagine the following transcript:
+    Imagine the following transcript::
 
         chr1  protein_coding  exon  100  108   .  -  .  transcript_id "t1"; gene_id "g1";
         chr1  protein_coding  exon  112  119   .  -  .  transcript_id "t1"; gene_id "g1";
         chr1  protein_coding  exon  100  108   .  -  .  transcript_id "t1"; gene_id "g1";      
 
     We can visualise the relationship between the different coordinate
-    domains as below:
+    domains as below::
 
         Genome coordinates:    1         1         1         1
                                0         1         2         3       
@@ -90,15 +90,15 @@ class TranscriptCoordInterconverter:
     TranscriptCoordInterconverter.genome2transcript should be the
     interverse of TranscriptCoordInterconverter.transcript2genome.
 
-    That is if
+    That is if::
 
         myConverter = TranscriptCoordInterverter(transcript)
     
-    then
+    then::
     
         myConverter.genome2transcript(myConverter.transcript2genome(x)) == x
     
-    and
+    and::
 
         myConverter.transcript2genome(myConverter.genome2transcript(x)) == x
     '''

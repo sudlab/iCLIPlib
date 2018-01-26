@@ -3,6 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. currentmodule:: iCLIP
 Welcome to iCLIPlib's documentation!
 ====================================
 
@@ -18,6 +19,29 @@ code was developed with iCLIP in mind. This documentation is currently
 mostly a stub while I get my act together to produce more complete narrative
 documentation. 
 
+Installation
+------------
+
+Currently installation relies mostly on the user to deal with the dependencies.
+These are currently:
+
+   * CGAT (www.github.com/CGATOxford/cgat)
+     
+   * numpy
+     
+   * pysam
+     
+   * pandas
+
+   * bx-python
+
+After installation of the dependencies, run `python setup.py install`, and put
+the contents of the scripts directory somewhere your shell can find them.
+
+Look out very soon for proper dependency management and installers from
+conda and PyPI.
+
+  
 Getter functions
 ----------------
 
@@ -42,20 +66,21 @@ how bamfiles are converted into cross-link profiles:
     
     counting.getCrosslink
     counting.find_first_deletion
-    
-    
- Counter functions
- -----------------
+
+
+Counter functions
+-----------------
  
- The getter functions themselves return conuts over regions. These functions return `pandas.Series` over various objects, such as
- lists of genomic intervals or transcripts. Transcripts are genearally 
- handled by the CGAT.GTF interface. 
+The getter functions themselves return conuts over regions. These functions
+return `pandas.Series` over various objects, such as lists of genomic
+intervals or transcripts. Transcripts are genearally handled by the
+CGAT.GTF interface.
  
- .. autosummary::
-    :toctree: generated/
-    
-    counting.count_intervals
-    counting.count_transcript
+.. autosummary::
+   :toctree: generated/
+  
+   counting.count_intervals
+   counting.count_transcript
     
 Metagene profiles
 -----------------
@@ -118,7 +143,7 @@ two worlds, converting genome coords to transcript coords and vice-versa
 .. autosummary::
     :toctree: generated/
     
-    utils.TranscriptCoordInterconverter
+    iCLIP.utils.TranscriptCoordInterconverter
     
 
 Clusters

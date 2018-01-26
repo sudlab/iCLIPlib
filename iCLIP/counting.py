@@ -194,7 +194,7 @@ def countChr(reads, chr_len, dtype='uint16', centre=False):
 
 ##################################################
 def wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
-               dtype="uint16", strand="."):
+               strand=".", dtype="unit16"):
     ''' Get depth over intervals from a bigWig file. Requests for
     intervals starting < 0 will be truncated to 0'''
 
@@ -270,7 +270,44 @@ def bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
 
 ##################################################
 def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
-    ''' A factory for getter functions '''
+    ''' A factory for getter functions
+
+    Parameters
+    ----------
+    bamfile : str or pysam.AlignmentFile
+        A bamfile to use to extract crosslinks
+    plus_wig : str
+        Name of a BigWig file to use as either the unstranded signal, or 
+        the plus stranded signal. If no `minus_wig` is provided signal is
+        assumed to be unstranded
+    minus_wig : str
+        Name of a BigWig file to use as the minus strand signal
+    centre : bool
+        Use the centre of the read rather than the base 5' of the read end.
+        Only applicable if using a bamfile to retrieve the signal.
+
+    Returns
+    -------
+    func
+        A :func:`getter` function that will retrieve the profile of crosslinks
+        over a specified genomic interval.
+
+    See Also
+    --------
+    getter : Abstract interface for returning crosslink profiles over genomic
+    regions.
+
+    
+    Notes
+    -----
+    
+    At least one or `bamfile` or `plus_wig` must be provided.
+
+    ToDo
+    ----
+    Implement for fetching from tabix indexed bedGraph files.
+
+'''
 
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
@@ -283,6 +320,47 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
 
         return partial(wig_getter, plus_wig=plus_wig, minus_wig=minus_wig)
 
+
+def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
+    '''Get the profile of crosslinks across a genomic region, returning
+    the number of crosslinks on each base.
+
+    This stub defines the abstract interface for a getter function.
+    Getters are made by calling the :func:`make_getter` function. The
+    returned function will have the interface specified here. 
+
+    Parameters
+    ----------
+    contig : str
+    start : int, optional
+    end : int or None, optional
+        If None specified then profile will be returned from 0 to end of
+        contig. 
+    strand : ['.','+','-'], optional
+        strand to return counts from. If ``.`` then data from both strands
+        is returned.
+    dtype : str
+       dtype to use for storing data. Usually a type of unsigned int. Larger
+       size ints are less likely to overflow, but take more memeory.
+
+    Returns
+    -------
+    pandas.Series
+        Profile of crosslinks. Index is the genomic base, value is the count.
+        Series is sparse, that is bases with no crosslinks are excluded from
+        the index.
+
+    See also
+    --------
+    make_getter : genearate a getter function from a bamfile or BigWig
+        file(s)
+
+    '''
+    raise NotImplementedError("This is an abstract function. Please"
+                              " create an instance of a concrete version "
+                              "using make_getter")
+
+    
 
 ##################################################
 def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',

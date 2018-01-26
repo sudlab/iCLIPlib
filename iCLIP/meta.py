@@ -175,7 +175,6 @@ def processing_index(interval_iterator, bam, window_size=50):
 
     Notes
     -----
-
     The proccessing index for G genes is defined as:
 
     .. math::
@@ -419,4 +418,3 @@ def get_window(profile, position, upstream, downstream):
     window.index = window.index - position
     return window
 
-    
