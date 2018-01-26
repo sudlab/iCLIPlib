@@ -5,6 +5,7 @@ from functools import partial
 from bx.bbi.bigwig_file import BigWigFile
 import pysam
 
+from counting import countChr
 
 def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
     '''Get the profile of crosslinks across a genomic region, returning
