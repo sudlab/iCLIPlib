@@ -175,3 +175,13 @@ texinfo_documents = [
 
 
 
+import sys
+from mock import Mock as MagicMock
+
+class Mock(MagicMock):
+    @classmethod
+    def __getattr__(cls, name):
+            return MagicMock()
+
+MOCK_MODULES = ['CGAT', 'CGAT.GTF', 'CGAT.IOTools', 'CGAT.Bed', 'CGAT.IndexedFasta', 'pysam', 'gobject', 'argparse', 'numpy', 'pandas']
+sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
