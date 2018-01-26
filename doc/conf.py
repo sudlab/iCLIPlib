@@ -183,5 +183,6 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
             return MagicMock()
 
-MOCK_MODULES = ['CGAT', 'CGAT.GTF', 'CGAT.IOTools', 'CGAT.Bed', 'CGAT.IndexedFasta', 'pysam', 'gobject', 'argparse', 'numpy', 'pandas']
+MOCK_MODULES = ['CGAT', 'CGAT.GTF', 'CGAT.IOTools', 'CGAT.Bed', 'CGAT.IndexedFasta', 'pysam',
+                'bx', 'bx.bbi', 'bx.bbi.bigwig_file', 'argparse', 'numpy', 'pandas']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
