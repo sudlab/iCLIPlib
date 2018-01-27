@@ -11,7 +11,7 @@ analysis. Here we have a set of tools for doing ad-hoc analysis.
 In general profiles are represented as pandas Series where the index represents 
 genomic bases and the values represents tag counts. 
 
-Documentation at readthedocs [here](http://icliplib.readthedocs.io/en/latest/index.html).
+Documentation at for the classes and modules at readthedocs `here <http://icliplib.readthedocs.io/en/latest/index.html>`_. At the moment doucmenation for the scripts is in the `--help`. Proper documentation at readthedocs coming soon.
 
 Proper installation and distribution coming very soon. 
 
