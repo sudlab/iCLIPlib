@@ -11,6 +11,10 @@ analysis. Here we have a set of tools for doing ad-hoc analysis.
 In general profiles are represented as pandas Series where the index represents 
 genomic bases and the values represents tag counts. 
 
+Documentation at readthedocs [here](http://icliplib.readthedocs.io/en/latest/index.html).
+
+Proper installation and distribution coming very soon. 
+
 The principle functions that produce these are:
     * count_intervals
     * count_transcript
@@ -23,14 +27,14 @@ Useful tools for analysis are:
 Also useful is 
    * TranscriptCoordInterconverter - as class for converting genomic coordinates to transcript ones
 
-In addition to this are implementations for a number of published algorythms:
-   * pentamer_enrichment - for looking for enriched kmers compared to randomised profiles
+In addition to this are implementations for a number of published analyses:
+   * kmer_enrichment - for looking for enriched kmers compared to randomised profiles
    * meta_gene - calculate a meta gene profile 
    * get_crosslink_fdr_by_randomisation - find significantly crosslinked bases by comparison to randomised profiles
      
 and a number of scripts that implement example analyses. 
 
-The requirements are CGAT, pysam, numpy and pandas.
+The requirements are CGAT, pysam, numpy, bxpython and pandas.
 The pipeline has numerous other requirements. 
 
 The documents are currently in the docs folder and in the code. Look out for them on readthedocs very soon.
