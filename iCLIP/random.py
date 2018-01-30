@@ -103,7 +103,7 @@ def boot_ci(x, quantiles=(0.05,0.95), *args,**kwargs):
     return bootstrap(x,*args, **kwargs).quantile(quantiles)
 
 
-def ratio_and_ci(test, control, quantiles=(0.05, 0.95), bootstraps=1000):
+def ratio_and_ci(test, control, quantiles=(0.025, 0.975), bootstraps=1000):
     '''Calculating ratio between the sum of two columns and add a
     confidence interval calculated using bootstrapping.
 
