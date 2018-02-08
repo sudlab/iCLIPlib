@@ -14,6 +14,7 @@ import CGAT.GTF as GTF
 
 from utils import TranscriptCoordInterconverter
 
+from getters import make_getter
 
 def find_first_deletion(cigar):
     '''Find the position of the the first deletion in a

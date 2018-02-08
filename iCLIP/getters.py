@@ -5,8 +5,6 @@ from functools import partial
 from bx.bbi.bigwig_file import BigWigFile
 import pysam
 
-from counting import countChr
-
 def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
     '''Get the profile of crosslinks across a genomic region, returning
     the number of crosslinks on each base.
@@ -151,7 +149,7 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
 
 ##################################################    
 def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
-               centre=False):
+                centre=False, read_end=False, use_deletions=True):
     '''A function to get iCLIP coverage across an interval from a BAM file'''
     chr_len = bamfile.lengths[bamfile.gettid(contig)]
     if end is None:
@@ -167,7 +165,7 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
                   % contig)
         return pd.Series()
 
-    counts = countChr(reads, chr_len, dtype, centre)
+    counts = countChr(reads, chr_len, dtype, centre, read_end, use_deletions)
 
     # Two sets of extrainous reads to exlucde: firstly we have pull back
     # reads with a 1bp extra window. Second fetch pulls back overlapping
@@ -215,3 +213,190 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
 
     return profile
  
+def find_first_deletion(cigar):
+    '''Find the position of the the first deletion in a
+    cigar string.
+
+    Parameters
+    ----------
+    cigar : tuple of tuple of int
+            a cigar string as returned by pysam.AlignedSegment.cigartuples
+
+    Returns
+    -------
+    int
+         The position of the first deletion in the cigar, returns 0 if no
+         deletion found.
+
+    '''
+
+    position = 0
+    for operation, length in cigar:
+
+        if operation == 2:
+            return position
+        else:
+            position += length
+
+    return position
+
+
+##################################################
+def getCrosslink(read, centre=False, read_end=False, use_deletions=True):
+    '''Finds the crosslinked base from a pysam read.
+
+    Parameters
+    ----------
+    read : pysam.AlignedSegment
+    centre : bool
+             Use centre of read rathter than usual Sugimoto rules
+    read_end : bool
+        Use the end of the read rather than the start
+    use_deletions : bool
+        If a deletion is present in the gene, use it as the crosslinks
+        base. 
+             
+    Returns
+    -------
+    int 
+         Position of crosslink in 0-based genome coordinates.
+         
+    Notes
+    -----
+    
+    If the read contains at least one deletion base (and use_deletions
+    is True), as identified by the cigar string, then the position of
+    the 5' most deleted base is used.
+    
+    If no deletion is present then cross-linked bases are defined in three
+    ways:
+        
+    1.  As in Sugimoto et al, Genome Biology 2012
+
+        The nucleotide preceding the start of the read is 
+        used. Read strand is taken into account, such that for reads
+        with `is_reverse=True`, the base after `aend` is used rather 
+        than the base before `pos`.
+
+    2.  (if `read_end==True`) As 1, but using the end of the read rather
+        than the start.
+
+    3.  (if `centre=True`) returns the centre base of the read,
+        accounting for splicing etc
+
+    '''
+
+    reverse_direction = (read.is_reverse and not read_end) or \
+                        (not read.is_reverse and read_end)
+    
+    if 'D' not in read.cigarstring:
+
+        if centre:
+            reference_bases = read.get_reference_positions(full_length=True)
+            i = len(reference_bases)/2
+            while reference_bases[i] is None and i > 0:
+                i = i -1
+            return reference_bases[i]
+
+        if reverse_direction:
+            pos = read.aend
+
+        else:
+            pos = read.pos - 1
+
+    else:
+        if read.is_reverse:
+            cigar = reversed(read.cigar)
+            position = find_first_deletion(cigar)
+            pos = read.aend - position - 1
+
+        else:
+            position = find_first_deletion(read.cigar)
+            pos = read.pos + position
+
+    return pos
+
+
+##################################################
+def countChr(reads, chr_len, dtype='uint16', centre=False,
+             read_end=False, use_deletions=True):
+    ''' Counts the crosslinked bases for each provided read.
+
+    Scans through the provided pysam.rowiterator reads and tallys the
+    number of cross links on each of the positive and negative strand. 
+    
+    Parameters
+    ----------
+    reads : iter of reads
+        Reads to get cross-links from. Most often a pysam.rowiterator
+        returned by pysam.AlignmentFile.fetch
+    chr_len : int
+        Length of contig/region being counted
+    dtype : str
+        dtype to use to store the counts. 
+    centre : bool
+        Use centre of read for cross-link rather than base preceding 5'
+        end
+        
+    Returns
+    -------
+    positive_counts, negative_counts : pandas.Series
+        Counts of cross-linked bases on positive and negative strands. The
+        Series are indexed on genome position and are sparse (see below)
+    count : 
+        total count of cross-linked bases
+    
+    See also
+    --------
+    getCrosslink : gets cross-link position for pysam.AlignedSegment
+    
+    Notes
+    -----  
+    The `dtype` to use internally for storage can be specified. Large types
+    reduce the chance of overflow, but require more memory. With 'uint16'
+    the largest count that can be handled is 255. Data is stored sparse,
+    so memory is less of a problem. Overflow will cause a ValueError.
+    
+    See :func:`getCrosslink` for a description of how the cross-link 
+    position is determined from each read.
+
+    '''
+
+    pos_depths = collections.defaultdict(int)
+    neg_depths = collections.defaultdict(int)
+
+    counter = 0
+
+    for read in reads:
+        
+        pos = getCrosslink(read, centre, read_end, use_deletions)
+        counter += 1
+
+        if read.is_reverse:
+            neg_depths[float(pos)] += 1
+        else:
+            pos_depths[float(pos)] += 1
+
+    try:
+        pos_depths = pd.Series(pos_depths, dtype=dtype)
+    except ValueError:
+        pos_depths = pd.Series({}, dtype=dtype)
+
+    try:
+        neg_depths = pd.Series(neg_depths, dtype=dtype)
+    except ValueError:
+        neg_depths = pd.Series({}, dtype=dtype)
+ 
+    # check for integer overflow: counter sum should add up to array sum
+    array_sum = pos_depths.sum() + neg_depths.sum()
+    if not counter == array_sum:
+        raise (ValueError,
+               "Sum of depths is not equal to number of "
+               "reads counted, possibly dtype %s not large enough" % dtype)
+    
+#    E.debug("Counted %i truncated on positive strand, %i on negative"
+#            % (counter.truncated_pos, counter.truncated_neg))
+#    E.debug("and %i deletion reads on positive strand, %i on negative"
+#            % (counter.deletion_pos, counter.deletion_neg))
+    
+    return (pos_depths, neg_depths, counter)
