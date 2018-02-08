@@ -44,7 +44,7 @@ def find_first_deletion(cigar):
 
 
 ##################################################
-def getCrosslink(read, centre=False):
+def getCrosslink(read, centre=False, read_end=False, use_deletions=True):
     '''Finds the crosslinked base from a pysam read.
 
     Parameters
@@ -52,6 +52,11 @@ def getCrosslink(read, centre=False):
     read : pysam.AlignedSegment
     centre : bool
              Use centre of read rathter than usual Sugimoto rules
+    read_end : bool
+        Use the end of the read rather than the start
+    use_deletions : bool
+        If a deletion is present in the gene, use it as the crosslinks
+        base. 
              
     Returns
     -------
@@ -61,11 +66,11 @@ def getCrosslink(read, centre=False):
     Notes
     -----
     
-    If the read contains at least one deletion base, as identified
-    by the cigar string, then the position of the 5' most deleted
-    base is used.
+    If the read contains at least one deletion base (and use_deletions
+    is True), as identified by the cigar string, then the position of
+    the 5' most deleted base is used.
     
-    If no deletion is present then cross-linked bases are defined in two
+    If no deletion is present then cross-linked bases are defined in three
     ways:
         
     1.  As in Sugimoto et al, Genome Biology 2012
@@ -75,11 +80,17 @@ def getCrosslink(read, centre=False):
         with `is_reverse=True`, the base after `aend` is used rather 
         than the base before `pos`.
 
-    2.  (if `centre=True`) returns the centre base of the read,
+    2.  (if `read_end==True`) As 1, but using the end of the read rather
+        than the start.
+
+    3.  (if `centre=True`) returns the centre base of the read,
         accounting for splicing etc
 
     '''
 
+    reverse_direction = (read.is_reverse and not read_end) or \
+                        (not read.is_reverse and read_end)
+    
     if 'D' not in read.cigarstring:
 
         if centre:
@@ -89,7 +100,7 @@ def getCrosslink(read, centre=False):
                 i = i -1
             return reference_bases[i]
 
-        if read.is_reverse:
+        if reverse_direction:
             pos = read.aend
 
         else:
