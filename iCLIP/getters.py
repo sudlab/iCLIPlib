@@ -48,7 +48,8 @@ def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
 
                               
 ##################################################
-def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
+def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False,
+                read_end=False, use_deletions=True):
     ''' A factory for getter functions
 
     Parameters
@@ -64,6 +65,12 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
     centre : bool
         Use the centre of the read rather than the base 5' of the read end.
         Only applicable if using a bamfile to retrieve the signal.
+    read_end : bool
+        Use 3' end of read rather than 5' end. 
+        Only applicable if using a bamfile to retrieve the signal.
+    use_deletions : bool
+        Use a deletion in the read as the crosslink base.
+        Only applicable if using a bamfile to retrieve the singal.
 
     Returns
     -------
@@ -91,7 +98,8 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False):
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
             bamfile = pysam.AlignmentFile(bamfile)
-        return partial(_bam_getter, bamfile, centre=centre)
+        return partial(_bam_getter, bamfile, centre=centre,
+                       read_end=read_end, use_deletions=use_deletions)
     elif plus_wig is not None:
         plus_wig = BigWigFile(open(plus_wig))
         if minus_wig is not None:
