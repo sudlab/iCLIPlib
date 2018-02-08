@@ -55,8 +55,8 @@ functions being aware of the source of the data.
 .. autosummary::
     :toctree: generated/
     
-    counting.make_getter
-    counting.getter
+    getters.make_getter
+    getters.getter
     
 the following should not need to be called directly but contain details of
 how bamfiles are converted into cross-link profiles:
