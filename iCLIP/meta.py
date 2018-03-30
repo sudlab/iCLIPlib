@@ -139,7 +139,11 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 
     counts_matrix = pd.concat(counts_collector, axis=1)
     counts_matrix = counts_matrix.transpose()
-    counts_matrix = counts_matrix.fillna(0) + pseudo_count
+
+    counts_matrix = counts_matrix.fillna(0)
+    counts_matrix[counts_matrix.sum(axis=1)>0] = \
+        counts_matrix[counts_matrix.sum(axis=1)>0] + pseudo_count
+
     if row_norm:
         counts_matrix = counts_matrix.div(
             counts_matrix.sum(axis=1), axis=0)
