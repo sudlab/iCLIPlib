@@ -139,7 +139,11 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
 
     counts_matrix = pd.concat(counts_collector, axis=1)
     counts_matrix = counts_matrix.transpose()
-    counts_matrix = counts_matrix.fillna(0) + pseudo_count
+
+    counts_matrix = counts_matrix.fillna(0)
+    counts_matrix[counts_matrix.sum(axis=1)>0] = \
+        counts_matrix[counts_matrix.sum(axis=1)>0] + pseudo_count
+
     if row_norm:
         counts_matrix = counts_matrix.div(
             counts_matrix.sum(axis=1), axis=0)
@@ -183,7 +187,7 @@ def processing_index(interval_iterator, bam, window_size=50):
 
     after Baejen et al Mol Cell 5(55):745-757. However, Beaejen et al
     normalise this number to the total number of genes, which seems
-    wrong to me. '''
+wrong to me. '''
 
     n_pm = 0
     n_m = 0
