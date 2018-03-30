@@ -33,6 +33,12 @@ count_clip_sites_bw:
     references: [count_bam.tsv]
     options: count_clip_sites.py -f gene -L /dev/null --plus-bw=%DIR%/SRSF7-Chr1-R1_plus.bw --minus-bw=%DIR%/SRSF7-Chr1-R1_minus.bw
 
+count_clip_sites_bed:
+    stdin: geneset.gtf.gz
+    outputs: [stdout]
+    references: [count_bam.tsv]
+    options: count_clip_sites.py -f gene -L /dev/null --bed=%DIR%/SRSF7-Chr1-R1.bed.gz
+ 
 count_clip_sites_transcripts:
     stdin: geneset.gtf.gz
     outputs: [stdout]

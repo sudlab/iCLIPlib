@@ -100,6 +100,8 @@ def main(argv=None):
     parser.add_option("--minus-wig", dest="minus_wig", type="string",
                       help="BigWig file containing signal for sample on minus strand",
                       default=None)
+    parser.add_option("--bed", dest="bedfile", type="string",
+                      help="Bed file containing signal for sample")
     parser.add_option("-s", "--spread", dest="spread", type="int",
                       default=15,
                       help="Number of bases each site of each bases"
@@ -148,20 +150,22 @@ def main(argv=None):
     elif options.plus_wig:
         bam = iCLIP.make_getter(plus_wig=options.plus_wig,
                                 minus_wig=options.minus_wig)
+    elif options.bedfile:
+        bam = iCLIP.make_getter(bedfile=options.bedfile)
     else:
-        E.error("Please specifiy one of bam file or wig file")
+        E.error("Please specifiy one of bam file, bed file or wig file")
         sys.exit(1)
 
     results = iCLIP.get_crosslink_fdr_by_randomisation(
         iterator, bam, options.rands, options.spread, pool)
 
-    results = results[results <= options.threshold]
+    results = results[results.fdr <= options.threshold]
     results = results.sort_index()
     results = results.reset_index()
-    results.columns = ["contig", "start", "FDR"]
+    results.columns = ["contig", "start", "FDR", "depth", "strand"]
     results["start"] = results["start"].astype("int")
     results["end"] = results.start + 1
-    results = results.loc[:,["contig", "start", "end", "FDR"]]
+    results = results.loc[:, ["contig", "start", "end", "FDR", "depth", "strand"]]
     results["FDR"] = -numpy.log10(results["FDR"])
     results.to_csv(options.stdout, header=False, index=False, sep="\t")
     # write footer and output benchmark information.

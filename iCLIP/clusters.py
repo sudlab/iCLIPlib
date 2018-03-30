@@ -76,7 +76,7 @@ def _get_profiles_and_conveter(gtf_iterator, bam):
         if profile.sum() > 0:
             converter = TranscriptCoordInterconverter(transcript)
             yield (profile, converter, LiteExon(0, converter.length),
-                   contig)
+                   contig, strand)
 
         # introns
        
@@ -98,13 +98,19 @@ def _get_profiles_and_conveter(gtf_iterator, bam):
             intron = (intron[0], intron[1] + 1)
             profile = intron_counts.loc[float(intron[0]):float(intron[1])]
             if profile.sum() > 0:
-                yield (profile, converter, LiteExon(*intron), contig)
+                yield (profile, converter, LiteExon(*intron), contig, strand)
 
 
 def _get_fdr_for_transcript(profile, exon, nspread, randomizations,
-                            converter, contig):
+                            converter, contig, strand):
 
     fdrs = fdr(profile, exon, nspread, randomizations)
+    fdrs.name = "fdr"
+    profile.name = "Depth"
+    fdrs = pd.concat([fdrs, profile], axis=1)
+    fdrs.fdr = fdrs.fdr.fillna(1)
+    fdrs.Depth = fdrs.Depth.fillna(0)
+    fdrs.strand = strand
     fdrs.index = pd.MultiIndex.from_tuples(
         [(contig, x) for x in converter.transcript2genome(fdrs.index.values)])
     return fdrs
@@ -141,8 +147,8 @@ def get_crosslink_fdr_by_randomisation(gtf_iterator, bam,
         :rtype: pd.Series with a MultiIndex first level contig,
                 second level base'''
 
-    args = ((profile, exon, nspread, randomisations, converter, contig)
-            for profile, converter, exon, contig
+    args = ((profile, exon, nspread, randomisations, converter, contig, strand)
+            for profile, converter, exon, contig, strand 
             in _get_profiles_and_conveter(gtf_iterator, bam))
     if pool:
         results = pool.imap(_par_get_fdr_for_transcript, args)

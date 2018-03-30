@@ -51,6 +51,8 @@ import CGAT.Experiment as E
 import pysam
 import subprocess
 import tempfile
+import CGAT.IOTools as IOTools
+import pandas as pd
 
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
@@ -61,7 +63,7 @@ import iCLIP
 def outputToBW(infile, outfile_prefix, chrom_sizes):
 
     E.debug("Attempting to output %s to bigWig" % outfile_prefix)
-    command = ["wigToBigWig",
+    command = ["bedGraphToBigWig",
                infile,
                chrom_sizes,
                outfile_prefix + ".bw"]
@@ -70,26 +72,53 @@ def outputToBW(infile, outfile_prefix, chrom_sizes):
     except Exception as e:
         E.error("Error on conversion: %s" % e)
         E.info("Outputting to wig")
-        shutil.move(infile, outfile_prefix + ".wig")
+        shutil.move(infile, outfile_prefix + ".bg")
     else:
         E.debug("Conversion successful")
         os.unlink(infile)
     
-def outputToWig(depths,chrom, wigfile):
+def outputToBG(depths,chrom, bgfile):
     '''depths is a pandas series keyed on chromosome position,
     chrom is a chromosome, wigfile is a file to output to.
     This function converts a series of depths into wig formated
     text and writes it to the specified file '''
 
-    wigfile.write("variableStep\tchrom=%s\n" % chrom)
     depths.index = depths.index
     for row in depths.iteritems():
         row = list(row)
         if row[0] <= 0:
             continue
-        row = "\t".join(map(str,row)) + "\n"
-        wigfile.write(row)
+        row = "\t".join(map(str,[chrom,
+                                 int(row[0]),
+                                 int(row[0])+1,
+                                 row[1]])) + "\n"
+        bgfile.write(row)
 
+def output2Bed(pos_depth, neg_depth, chrom, outfile):
+
+    pos_depth.name = "+"
+    neg_depth.name = "-"
+    neg_depth = abs(neg_depth)
+    
+    both_depth = pd.concat([pos_depth, neg_depth], axis=1)
+
+    def _row_to_bed(row, strand):
+        return "\t".join(
+            map(str, [chrom,
+                      int(row[0]),
+                      int(row[0])+1,
+                      ".",
+                      row[1][strand],
+                      strand]))
+
+    for row in both_depth.iterrows():
+        if row[1]["+"] > 0:
+            outfile.write(_row_to_bed(row, "+") + "\n")
+
+        if row[1]["-"] > 0:
+            outfile.write(_row_to_bed(row, "-") + "\n")
+                          
+    
 def main(argv=None):
     """script main.
 
@@ -106,9 +135,17 @@ def main(argv=None):
     parser.add_option("-c", "--use-centre", dest="centre", action="store_true",
                       default=False,
                       help="Use centre of read rather than frist base")
-    parser.add_option("-w","--wig", dest="output_wig", action="store_true",
+    parser.add_option("-f", "--format", dest="format",
+                      choices=["bigWig", "bigwig", "BigWig",
+                               "bedGraph", "bg", "bedgraph",
+                               "bed", "Bed", "BED"],
+                      help="Output format. Either bigWig (2 files, + and - strand)"
+                           ", bedGraph (2 files), or bed (1 file, depth in column 5,"
+                           "strand in column 6",
+                      default="bigWig")
+    parser.add_option("-w", "--wig", dest="output_wig", action="store_true",
                       default=False,
-                      help="Write output to wig file rather than bigwig")
+                      help="Write output to bedgraph file rather than bigwig")
     parser.add_option("--dtype", dest = "dtype", type="string",
                       default="uint32",
                       help="dtype for storing depths")
@@ -116,6 +153,10 @@ def main(argv=None):
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
 
+    options.format = options.format.lower()
+    if options.format == "bg":
+        options.format = "bedgraph"
+    
     if options.stdin == sys.stdin:
         in_bam = pysam.Samfile("-", "rb")
     else:
@@ -123,8 +164,11 @@ def main(argv=None):
         options.stdin.close()
         in_bam = pysam.Samfile(fn, "rb")
 
-    plus_wig = tempfile.NamedTemporaryFile(delete=False)
-    minus_wig = tempfile.NamedTemporaryFile(delete=False)
+    if options.format == "bed":
+        bedfile = IOTools.openFile(args[0], "w")
+    else:
+        plus_wig = tempfile.NamedTemporaryFile(delete=False)
+        minus_wig = tempfile.NamedTemporaryFile(delete=False)
 
     contig_sizes = []
 
@@ -141,33 +185,35 @@ def main(argv=None):
         del neg_depth
         neg_depth_sorted = -1*neg_depth_sorted
 
-#        E.debug("Counted %i truncated on positive strand, %i on negative"
-#                % (counter.truncated_pos, counter.truncated_neg))
-#        E.debug("and %i deletion reads on positive strand, %i on negative"
-#                % (counter.deletion_pos, counter.deletion_neg))
-
         # output to temporary wig file
-        outputToWig(pos_depth_sorted, chrom, plus_wig)
-        outputToWig(neg_depth_sorted, chrom, minus_wig)
+        if options.format == "bed":
+            output2Bed(pos_depth_sorted, neg_depth_sorted, chrom, bedfile)
+        else:
+            outputToBG(pos_depth_sorted, chrom, plus_wig)
+            outputToBG(neg_depth_sorted, chrom, minus_wig)
     
         contig_sizes.append([chrom, chrom_length])
 
         del pos_depth_sorted
         del neg_depth_sorted
-    
-    plus_wig_name = plus_wig.name
-    minus_wig_name = minus_wig.name
-    plus_wig.close()
-    minus_wig.close()
+ 
+    if options.format == "bed":
+        bedfile.close()
+    else:
+        plus_wig_name = plus_wig.name
+        minus_wig_name = minus_wig.name
+        plus_wig.close()
+        minus_wig.close()
 
     outname_plus = args[0] + "_plus"
     outname_minus = args[0] + "_minus"
 
-    if options.output_wig:
-        E.debug("Outputting to wig")
-        shutil.move(plus_wig_name, outname_plus + ".wig")
-        shutil.move(minus_wig_name, outname_minus + ".wig")
-    else:
+    if options.format == "bedgraph":
+        E.debug("Outputting to bedGraph")
+        shutil.move(plus_wig_name, outname_plus + ".bg")
+        shutil.move(minus_wig_name, outname_minus + ".bg")
+        
+    elif options.format == "bigwig":
         chrom_sizes_file = tempfile.NamedTemporaryFile(delete=False, dir=".")
         contig_sizes = ["\t".join(map(str,row)) for row in contig_sizes]
         contig_sizes = "\n".join(contig_sizes) + "\n"
