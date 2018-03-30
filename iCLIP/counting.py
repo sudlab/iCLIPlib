@@ -22,7 +22,7 @@ from getters import make_getter
 
 ##################################################
 def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
-                    use_centre=False):
+                    use_centre=False, get_all_and_mask=True):
     ''' Count the crosslinked bases across a set of intervals
 
     Parameters
@@ -39,7 +39,11 @@ def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
     dtype : str
         `numpy` dtype used for storing counts. Larger dtypes reduce chance
         of overflow, but use more memory. Defaults to 'uint32'.
-    
+    get_all_and_mask : bool, optional
+        Instead of fetching each exon indevidually from the getter,
+        fetch entire chromsome region, and then subset to things
+        in the interval.
+
     Returns
     -------
     pandas.Series
@@ -57,12 +61,27 @@ def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
         getter = make_getter(bamfile=getter, centre=use_centre)
 
     exon_counts = []
-    for exon in intervals:
-        exon_counts.append(getter(contig=contig,
-                                  start=exon[0],
-                                  end=exon[1],
-                                  strand=strand,
-                                  dtype=dtype))
+
+    if get_all_and_mask:
+        start = min(exon[0] for exon in intervals)
+        end = max(exon[1] for exon in intervals)
+        
+        all_counts = getter(contig=contig,
+                            start=start,
+                            end=end,
+                            strand=strand,
+                            dtype=dtype)
+
+        for exon in intervals:
+            exon_counts.append(all_counts.loc[start:(end-1)])
+
+    else:
+        for exon in intervals:
+            exon_counts.append(getter(contig=contig,
+                                      start=exon[0],
+                                      end=exon[1],
+                                      strand=strand,
+                                      dtype=dtype))
 
     if len(exon_counts) == 0:
         transcript_counts = pd.Series()
