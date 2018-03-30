@@ -57,14 +57,17 @@ def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
     getCrosslink : find cross-link base from pysam.AlignedSegment
     '''
 
+    if len(intervals)==0:
+        return pd.Series()
+    
     if isinstance(getter, pysam.AlignmentFile):
         getter = make_getter(bamfile=getter, centre=use_centre)
 
     exon_counts = []
-
+    
     if get_all_and_mask:
-        start = min(exon[0] for exon in intervals)
-        end = max(exon[1] for exon in intervals)
+        start = min(float(exon[0]) for exon in intervals)
+        end = max(float(exon[1]) for exon in intervals)
         
         all_counts = getter(contig=contig,
                             start=start,
@@ -72,8 +75,11 @@ def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
                             strand=strand,
                             dtype=dtype)
 
+        if all_counts.sum() == 0:
+            return pd.Series()
+        
         for exon in intervals:
-            exon_counts.append(all_counts.loc[start:(end-1)])
+            exon_counts.append(all_counts.loc[exon[0]:(exon[1]-1)])
 
     else:
         for exon in intervals:
@@ -146,7 +152,11 @@ def count_transcript(transcript, bam, flanks=0):
 
     import pandas
     exons = GTF.asRanges(transcript, "exon")
-    
+
+    if len(exons)==0:
+        print "transcript:"
+        print "\n".join(str(e) for e in transcript)
+        
     counts = count_intervals(bam, exons,
                              contig=transcript[0].contig,
                              strand=transcript[0].strand)
