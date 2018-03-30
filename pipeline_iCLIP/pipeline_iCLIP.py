@@ -138,41 +138,34 @@ Code
 from ruffus import *
 from ruffus.combinatorics import *
 
-import sys, glob, gzip, os, itertools, re, math, types, collections, time
-import optparse, shutil
+import sys, glob, gzip, os, itertools, re, math
 import sqlite3
 
 import CGAT.Experiment as E
 import CGAT.IOTools as IOTools
-import CGAT.Database as Database
 import CGATPipelines.PipelineMapping as PipelineMapping
-import CGATPipelines.PipelineMotifs as PipelineMotifs
-import CGATPipelines.PipelineRnaseq as PipelineRnaseq
 import PipelineiCLIP
 ###################################################
 ###################################################
 ###################################################
-## Pipeline configuration
+# Pipeline configuration
 ###################################################
 
 # load options from the config file
 import CGATPipelines.Pipeline as P
 P.getParameters(
-    ["%s.ini" % __file__[:-len(".py")],
-     "../pipeline.ini",
-     "pipeline.ini" ] )
+    ["%s.ini" % P.snip(__file__, ".py"),
+     "pipeline.ini"])
 
 PARAMS = P.PARAMS
 PARAMS_ANNOTATIONS = P.peekParameters( PARAMS["annotations_dir"],
                                        "pipeline_annotations.py" )
 
-PipelineMotifs.PARAMS = PARAMS
 PipelineiCLIP.PARAMS = PARAMS
 PipelineiCLIP.PARAMS_ANNOTATIONS = PARAMS_ANNOTATIONS
 
 ###################################################################
-###################################################################
-## Helper functions mapping tracks to conditions, etc
+# Helper functions mapping tracks to conditions, etc
 ###################################################################
 import CGATPipelines.PipelineTracks as PipelineTracks
 
@@ -183,9 +176,6 @@ for line in IOTools.openFile("sample_table.tsv"):
     TRACKS.tracks.append(PipelineTracks.Sample3(filename=track))
 
 
-
-###################################################################
-###################################################################
 ###################################################################
 def connect():
     '''connect to database.
@@ -207,8 +197,7 @@ def connect():
 
 ###################################################################
 ###################################################################
-###################################################################
-## worker tasks
+# worker tasks
 ###################################################################
 @transform("*.fastq.gz", regex("(.+).fastq.gz"),
            add_inputs(os.path.join(PARAMS["bowtie_index_dir"],
@@ -555,7 +544,6 @@ def dedup_alignments(infile, outfile):
     job_memory="7G"
     statement = ''' umi_tools dedup
                     %(dedup_options)s
-                    --output-stats=%(outfile)s
                     -I %(infile)s
                     -S %(outfile)s.bam
                     -L %(outfile)s.log;
@@ -587,7 +575,33 @@ def get_union_bams(infile, outfile):
                         samtools index %(outfile)s'''
 
     P.run()
-       
+
+    
+###################################################################
+@transform([get_union_bams,
+            dedup_alignments],
+           suffix(".bam"),
+           ".bed.gz")
+def get_indexed_bed(infile, outfile):
+    '''Convert BAMs of reads into beds of signal'''
+
+    outfile = P.snip(outfile, ".gz")
+    statement = '''python %(project_src)s/iCLIP2bigWig.py 
+                     -I %(infile)s
+                     %(outfile)s
+                     --format=bed;
+
+                     checkpoint;
+
+                     bgzip %(outfile)s
+
+                    checkpoint;
+
+                     tabix -p bed %(outfile)s.gz'''
+
+    P.run()
+
+    
 ###################################################################
 @transform([dedup_alignments,indexMergedBAMs,
             get_union_bams], 
@@ -875,9 +889,8 @@ def reproducibility():
 
 ###################################################################
 @follows(mkdir("counts.dir"))
-@transform([dedup_alignments,
-            get_union_bams],
-           regex(".+/(.+).bam"),
+@transform(get_indexed_bed,
+           regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
            r"counts.dir/\1.tsv.gz")
@@ -890,7 +903,7 @@ def countReadsOverGenes(infiles, outfile):
         
     statement = '''python %(SRCDIR)s/iCLIPlib/scripts/count_clip_sites.py
                    -I %(annotations)s
-                   %(bamfile)s
+                   --bed=%(bamfile)s
                    -f gene
                    %(use_centre)s
                    -S %(outfile)s '''
@@ -912,9 +925,8 @@ def loadCounts(infiles, outfile):
 # Analysis
 ###################################################################
 @follows(mkdir("gene_profiles.dir"))
-@transform([dedup_alignments,
-            get_union_bams),
-           regex(".+/(.+).bam"),
+@transform(get_indexed_bed,
+           regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
            r"gene_profiles.dir/\1.exons.tsv")
@@ -934,19 +946,19 @@ def calculateGeneExonProfiles(infiles, outfile):
                   --scale-flanks
                   %(use_centre)s
                   -S %(outfile)s
-                  -L %(outfile)s.log'''
+                  -L %(outfile)s.log
+                  --bed=%(infile)s'''
     
     P.run()
 
     
 ###################################################################
 ###################################################################
-@transform([dedup_alignments,
-            get_union_bams],
-           formatter(),
+@transform(get_indexed_bed,
+           regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
-           r"gene_profiles.dir/{basename[0]}.introns.tsv")
+           r"gene_profiles.dir/\1.introns.tsv")
 def calculateGeneIntronProfiles(infiles, outfile):
     '''Get a metagene profile over concatenated introns'''
 
@@ -961,11 +973,11 @@ def calculateGeneIntronProfiles(infiles, outfile):
                  | awk -F'\\t' 'BEGIN{OFS=FS} {$3="exon"; print}'
                  | python %(project_src)s/iCLIPlib/scripts/iCLIP_bam2geneprofile.py
                    -f 0
-                   %(bamfile)s
+                   --bed=%(bamfile)s
                    %(use_centre)s
                    --exon-bins=100
                    -S %(outfile)s
-                   -L %(outfile)s.log; '''
+                   -L %(outfile)s; '''
 
     P.run()
 
@@ -996,11 +1008,11 @@ def profiles():
 # Calling significant clusters
 ###################################################################
 @follows(mkdir("clusters.dir"), mapping_qc)
-@transform(dedup_alignments,
-           regex(".+/(.+).bam"),
+@transform(get_indexed_bed,
+           regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
-           r"clusters.dir/\1.sig_bases.bg.gz")
+           r"clusters.dir/\1.sig_bases.bed.gz")
 def callSignificantBases(infiles, outfiles):
     '''Call bases as significant based on mapping depth in window
     around base'''
@@ -1015,7 +1027,7 @@ def callSignificantBases(infiles, outfiles):
         
     statement = ''' python %(project_src)s/scripts/significant_bases_by_randomisation.py
                     -I %(gtf)s
-                    -b %(bam)s
+                    -bed=%(bam)s
                     --spread=%(clusters_window_size)s
                     -p %(job_threads)s
                     %(centre)s
@@ -1029,10 +1041,11 @@ def callSignificantBases(infiles, outfiles):
                 '''
 
     P.run()
-                    
 
+    
+###################################################################
 @transform(callSignificantBases,
-           suffix("sig_bases.bg.gz"),
+           suffix("sig_bases.bed.gz"),
            "clusters.bed.gz")
 def callSignificantClusters(infile, outifle):
     '''Join significant bases that are within in the cluster
@@ -1061,7 +1074,7 @@ def callReproducibleClusters(infiles, outfile):
 
 
 ###################################################################
-@transform(callSignificantBases, suffix(".bg.gz"), ".count_bases")
+@transform(callSignificantBases, suffix(".bed.gz"), ".count_bases")
 def countCrosslinkedBases(infile, outfile):
     ''' Count number of crosslinked bases within gene models'''
 
@@ -1179,7 +1192,7 @@ def clusters():
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
                       os.path.join(PARAMS["genome_dir"],
                                    PARAMS["genome"])),
-           regex(".+/(.+)(.bam|.bg.gz"),
+           regex(".+/(.+)(.bam|.bed.gz"),
            [r"kmers.dir/\1.%smers.tsv.gz" % kmer
             for kmer in PARAMS["kmer_lengths"].split(",")])
 def get_kmer_enrichments(infiles, outfiles):
@@ -1268,7 +1281,8 @@ def generateBigWigs(infile, outfiles):
                           %(out_pattern)s '''
 
     P.run()
-
+    
+    
 ###################################################################
 @follows(mkdir("export/hg19"))
 @transform(generateBigWigs,

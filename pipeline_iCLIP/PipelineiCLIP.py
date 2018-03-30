@@ -3,7 +3,6 @@ import CGAT.IOTools as IOTools
 import CGATPipelines.Pipeline as P
 import CGAT.FastaIterator as FastaIterator
 import CGAT.Experiment as E
-#import CGATPipelines.PipelineUtilities as PUtils
 from CGATPipelines.Pipeline import cluster_runnable
 import pandas
 import os
@@ -13,28 +12,12 @@ import pysam
 # The PARAMS dictionary must be provided by the importing
 # code
 
-PARAMS = {}
-
 
 def checkParams():
 
     if not len(PARAMS) > 0:
         raise ValueError(
                 "Please set PARAMS dictionary in PipelineiCLIP module")
-
-
-def removeFirstAndLastExon(infile, outfile):
-
-    transcripts = GTF.transcript_iterator(
-        GTF.iterator(IOTools.openFile(infile)))
-    outfile = IOTools.openFile(outfile, "w")
-
-    for transcript in transcripts:
-
-        for exon in transcript[1:-1]:
-            outfile.write(str(exon) + "\n")
-
-    outfile.close()
 
 
 def getBarcodeCG(table, outfile):
@@ -112,19 +95,20 @@ def callReproducibleClusters(infiles, outfile, min_overlap):
 
     merge_template = '''<( zcat %s
                           | sort -k1,1 -k2,2n
-                          | python %s/bed2bed.py
+                          | python bed2bed
                           --method=merge
                           --merge-and-resolve-blocks
                           --merge-stranded
                            -L /dev/null
                             ) '''
     infiles = " ".join(
-        [merge_template % (infile, PARAMS["scriptsdir"])
+        [merge_template % infile)
+        
          for infile in infiles])
     logfile = P.snip(outfile, ".bed.gz")
     statement = ''' cat %(infiles)s
                   | sort -k1,1 -k2,2n -k3,3n
-                  | python %(scriptsdir)s/bed2bed.py
+                  | cgat bed2bed
                           --method=merge
                           --merge-and-resolve-blocks
                           --merge-min-intervals=%(min_overlap)s
@@ -211,91 +195,4 @@ def makeClustersUCSC(infiles, outfile, group, label):
     with IOTools.openFile(outfile, "w") as outf:
         outf.write(outlines+"\n\n")
 
-
-###################################################################
-def subsampleNReadsFromFasta(infile, outfile, nreads, logfile=""):
-
-    checkParams()
-
-    nseqs = FastaIterator.count(infile)
-
-    if nreads > nseqs:
-        prop = 1
-    else:    
-        prop = float(nreads)/float(nseqs)
-
-    if logfile:
-        logfile = "-L %s" % logfile
-
-    statement = ''' python %(scriptsdir)s/fasta2fasta.py 
-                     -I %(infile)s
-                     %(logfile)s
-                     -m sample
-                     --sample-proportion=%(prop)s
-                     -S %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@cluster_runnable
-def calculateSplicingIndex(bamfile, gtffile, outfile):
-
-    bamfile = pysam.AlignmentFile(bamfile)
-
-    counts = E.Counter()
-
-    for transcript in GTF.transcript_iterator(
-            GTF.iterator(IOTools.openFile(gtffile))):
-
-        introns = GTF.toIntronIntervals(transcript)
-        E.debug("Gene %s (%s), Transcript: %s, %i introns" %
-                (transcript[0].gene_id,
-                 transcript[0].contig,
-                 transcript[0].transcript_id,
-                 len(introns)))
-
-        for intron in introns:
-            reads = bamfile.fetch(
-                reference=transcript[0].contig,
-                start=intron[0], end=intron[1])
-            
-            for read in reads:
-                if 'N' in read.cigarstring:
-                    blocks = read.get_blocks()
-                    starts, ends = zip(*blocks)
-                    if intron[0] in ends and intron[1] in starts:
-                        counts["Exon_Exon"] += 1
-                    else:
-                        counts["spliced_uncounted"] += 1
-                elif (read.reference_start <= intron[0] - 3
-                      and read.reference_end >= intron[0] + 3):
-                    if transcript[0].strand == "+":
-                        counts["Exon_Intron"] += 1
-                    else:
-                        counts["Intron_Exon"] += 1
-                elif (read.reference_start <= intron[1] - 3
-                      and read.reference_end >= intron[1] + 3):
-                    if transcript[0].strand == "+":
-                        counts["Intron_Exon"] += 1
-                    else:
-                        counts["Exon_Intron"] += 1
-                else:
-                    counts["unspliced_uncounted"] += 1
-
-        E.debug("Done, counts are: " + str(counts))
-    header = ["Exon_Exon",
-              "Exon_Intron",
-              "Intron_Exon",
-              "spliced_uncounted",
-              "unspliced_uncounted"]
-
-    with IOTools.openFile(outfile, "w") as outf:
-
-        outf.write("\t".join(header)+"\n")
-        outf.write("\t".join(map(str, [counts[col] for col in header]))
-                   + "\n")
-
-
-        
 
