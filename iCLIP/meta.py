@@ -183,7 +183,7 @@ def processing_index(interval_iterator, bam, window_size=50):
 
     after Baejen et al Mol Cell 5(55):745-757. However, Beaejen et al
     normalise this number to the total number of genes, which seems
-    wrong to me. '''
+wrong to me. '''
 
     n_pm = 0
     n_m = 0
