@@ -98,6 +98,8 @@ def main(argv=None):
                       "--minus-wig for standed computation")
     parser.add_option("--minus_wig", dest="minus_wig", default=None,
                       help="Use this to provide stranded wig data")
+    parser.add_option("--bed", dest="bedfile", default=None,
+                      help="Use bed file with signal instead of bam")
     parser.add_option("--centre", dest="centre", action="store_true",
                       default=False,
                       help="Use centre of read rather than end")
@@ -111,6 +113,8 @@ def main(argv=None):
     if options.plus_wig:
         bam = iCLIP.make_getter(plus_wig=options.plus_wig,
                                 minus_wig=options.minus_wig)
+    elif options.bedfile:
+        bam = iCLIP.make_getter(bedfile=options.bedfile)
     else:
         bam = iCLIP.make_getter(bamfile=args[0], centre=options.centre)
 

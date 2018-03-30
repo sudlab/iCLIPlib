@@ -46,7 +46,8 @@ def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
 
                               
 ##################################################
-def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False,
+def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
+                centre=False,
                 read_end=False, use_deletions=True):
     ''' A factory for getter functions
 
@@ -60,6 +61,8 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False,
         assumed to be unstranded
     minus_wig : str
         Name of a BigWig file to use as the minus strand signal
+    bedfile: str
+        Name of a tabix indexed bed file to use to extract the crosslinks
     centre : bool
         Use the centre of the read rather than the base 5' of the read end.
         Only applicable if using a bamfile to retrieve the signal.
@@ -105,8 +108,8 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, centre=False,
 
         return partial(_wig_getter, plus_wig=plus_wig, minus_wig=minus_wig)
     elif bedfile is not None:
-        if not isinstance(bedfile, pysam.Tabix):
-            bedfile = pysam.Tabix(bedfile)
+        if not isinstance(bedfile, pysam.TabixFile):
+            bedfile = pysam.TabixFile(bedfile)
         return partial(_bed_getter, bedfile=bedfile)
     else:
         raise ValueError("Please provide either a bamfile, a bigwig or a"
@@ -194,9 +197,11 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
     '''Get crosslink profiles from tabix indexed bedGraph/Bed'''
     
     # fetch the rercords from the specificed region
-    crosslinks = bedfile.fetch(contig, start, end, pysam.asBed())
+    crosslinks = bedfile.fetch(contig, start, end, parser=pysam.asBed())
     
-    profile = pandas.Series(dtype=dtype)
+    profile = dict()
+
+    check_sum = 0
     
     for base in crosslinks:
         try:
@@ -205,9 +210,14 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
             correct_strand = True
             
         if correct_strand:
-            profile[base] = int(base.score)
+            profile[float(base.start)] = int(base.score)
             check_sum += int(base.score)
 
+    try:
+        profile = pd.Series(profile, dtype=dtype)
+    except ValueError:
+        profile = pd.Series(dtype=dtype)
+        
     if not check_sum == profile.sum():
         raise OverflowError("Counts exceed specified dtype. Use bigger dtype")
 

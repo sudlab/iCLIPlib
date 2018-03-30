@@ -74,6 +74,8 @@ def main(argv=None):
                       help="BigWig with tag counts from plus strand")
     parser.add_option("--minus-bw", dest="minus_wig", type="string",
                       help="BigWig with tag counts from minus strand")
+    parser.add_option("--bed", dest="bedfile", type="string",
+                      help="tabix indexed bed file with tag counts"),
     parser.add_option("-c", "--use-centre", dest="centre", action="store_true",
                       default=False,
                       help="Use centre of read rather than start")
@@ -101,6 +103,8 @@ def main(argv=None):
                 "Please provide wigs for both strands or use --unstranded_wig")
         bamfile = iCLIP.make_getter(plus_wig=options.plus_wig,
                                     minus_wig=options.minus_wig)
+    elif options.bedfile:
+        bamfile = iCLIP.make_getter(bedfile=options.bedfile)   
     else:
         bamfile = pysam.AlignmentFile(args[0])
         
