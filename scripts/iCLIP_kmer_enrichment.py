@@ -1,5 +1,5 @@
 '''
-cgat_script_template.py - template for CGAT scripts
+iCLIP_kmer_enrichment.py - test for enrichment of kmers
 ====================================================
 
 :Author:
@@ -48,7 +48,7 @@ sys.path.insert(1, os.path.join(
 import iCLIP
 
 
-def main(argv=None):
+def main(argv=None): 
     """script main.
     parses command line options in sys.argv, unless *argv* is given.
     """
@@ -74,7 +74,7 @@ def main(argv=None):
     parser.add_option("-n", "--num-randomizations", dest="randomisations",
                        type="int", default=100,
                        help="Number of times to permute profiles to assess"
-                            "significance of enrichment")
+nos                            "significance of enrichment")
     parser.add_option("-p", "--processes", dest="proc", type="int",
                       default=None,
                       help="Use this many processesors for multiprocessing")

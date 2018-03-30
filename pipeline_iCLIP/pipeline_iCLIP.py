@@ -46,10 +46,6 @@ Configuration
 
 The pipeline requires a configured :file:`pipeline.ini` file.
 
-The sphinxreport report requires a :file:`conf.py` and :file:`sphinxreport.ini`
-file  (see :ref:`PipelineDocumenation`). To start with, use the files supplied
-with the :ref:`Example` data.
-
 Input
 -----
 
@@ -247,6 +243,8 @@ def loadSampleInfo(infile, outfile):
 
     P.load(infile, outfile,
            options="--header-names=format,barcode,track,lanes -i barcode -i track")
+
+
 ###################################################################
 @follows(mkdir("demux_fq"))
 @transform(filterPhiX, regex("(.+).fastq.clean.gz"),
@@ -255,11 +253,11 @@ def extractUMI(infile, outfile):
     ''' Remove UMI from the start of each read and add to the read
     name to allow later deconvolving of PCR duplicates '''
 
-    statement=''' zcat %(infile)s
-                | python %(project_src)s/UMI-tools/extract_umi.py
+    statement='''umi_tools extract
+                        -I %(infile)s
                         --bc-pattern=%(reads_bc_pattern)s
                         -L %(outfile)s.log
-                | gzip > %(outfile)s '''
+                        -S %(outfile)s '''
 
     P.run()
 
@@ -304,7 +302,7 @@ def generateReaperMetaData(infile, outfile):
 @follows(loadUMIStats, generateReaperMetaData)
 @subdivide(extractUMI, regex(".+/(.+).fastq.umi_trimmed.gz"),
        add_inputs(r"\1_reaper_metadata.tsv", "sample_table.tsv"),
-       r"demux_fq/*_\1.fastq*gz")
+       r"demux_fq/*_\1.fastq.gz")
 def demux_fastq(infiles, outfiles):
     '''Demultiplex each fastq file into a seperate file for each
     barcode/UMI combination'''
@@ -335,48 +333,6 @@ def demux_fastq(infiles, outfiles):
             statement += '''checkpoint;
                          mv demux_fq/%(track)s_%(bc)s.clean.gz
                             demux_fq/%(name)s_%(track)s.%(ext)s; ''' % locals()
-
-    P.run()
-
-
-###################################################################
-@active_if(PARAMS["reads_paired"]==1)
-@transform("*.fastq.2.gz", suffix(".fastq.2.gz"),
-           ".fastq.reaped.2.gz")
-def reapRead2(infile,outfile):
-
-    track = P.snip(outfile,".fastq.reaped.2.gz")
-    statement = ''' reaper -geom no-bc
-                           -3pa %(reads_3prime_adapt)s
-                           -i %(infile)s
-                           -basename %(track)s
-                           --noqc
-                           -clean-length 15 > %(track)s_pair_reaper.log;
-                    checkpoint;
-                    mv %(track)s.lane.clean.gz %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@active_if(PARAMS["reads_paired"]==1)
-@follows(mkdir("reconciled.dir"), reapRead2)
-@transform(demux_fastq,
-           regex(".+/(.+)_(.+).fastq.1.gz"),
-           add_inputs(r"\2.fastq.2.gz"),
-           [r"reconciled.dir/\1_\2.fastq.2.gz",
-            r"reconciled.dir/\1_\2.fastq.1.gz"])
-def reconsilePairs(infiles, outfiles):
-    ''' Pull reads read 2 file that are present in each read 1 file '''
-
-    track = P.snip(os.path.basename(infiles[0]), ".fastq.1.gz")
-    infiles = " ".join(infiles)
-    job_options = "-l mem_free=1G"
-    statement = '''python %(scripts_dir)s/fastqs2fastqs.py
-                          --method=reconcile
-                          --id-pattern-1='(.+)_.+_[ATGC]+'
-                          --output-filename-pattern=reconciled.dir/%(track)s.fastq.%%s.gz
-                           %(infiles)s > reconciled.dir/%(track)s.log '''
 
     P.run()
 
@@ -446,26 +402,43 @@ def mapping_files():
 
 ###################################################################
 @follows(mkdir("mapping.dir"), demux_fastq)
-@files(mapping_files)
-def run_mapping(infiles, outfiles):
-    ''' run the mapping target of the mapping pipeline '''
+@transform(demux_fastq,
+           regex(".+/(.+).fastq.gz"),
+           "mapping.dir/\1.bam")
+def run_mapping(infile, outfiles):
+    ''' Map reads with the specified read mapper '''
 
-    to_cluster = False
-    statement = ''' ln -f pipeline.ini mapping.dir/pipeline.ini;
-                    checkpoint;
-                    cd mapping.dir;
-                    nice python %(pipelinedir)s/pipeline_mapping.py
-                    make mapping
-                    -v5 -p%(pipeline_mapping_jobs)s  '''
+
+    if PARAMS["mapper"]=="star":
+        job_threads=PARAMS["star_threads"]
+        job_memory=PARAMS["star_memory"]
+        star_mapping_genome = PARAMS["star_genome"] or PARAMS["genome"]
+        m = PipelineMapping.STAR(
+            executable=P.substituteParameters(**locals())["star_executable"],
+            strip_sequence=0)
+        
+    elif PARAMS["mapper"]=="bowtie":
+         job_threads = PARAMS["bowtie_threads"]
+         job_memory = PARAMS["bowtie_memory"]
+
+         m = PipelineMapping.Bowtie(
+             executable="bowtie",
+             tool_options=PARAMS["bowtie_options"],
+             strip_sequence=0)
+
+         genome = PARAMS["bowtie_genome"]
+         reffile = os.path.join(PARAMS["bowtie_index_dir"],
+                                PARAMS["bowtie_genome"] + ".fa")
+
+    statement = m.build((infile,), outfile)
 
     P.run()
 
 
 ###################################################################
-@follows(run_mapping)
-@collate("mapping.dir/*.dir/*-*-*_*.bam",
-         regex("(.+)/([^_]+\-.+\-[^_]+)_(.+)\.([^.]+)\.bam"),
-         r"\1/merged_\2.\4.bam")
+@collate(run_mapping,
+         regex("(.+)/([^_]+\-.+\-[^_]+)_(.+)\.bam"),
+         r"\1/merged_\2.bam")
 def mergeBAMFiles(infiles, outfile):
     '''Merge reads from the same library, run on different lanes '''
 
@@ -489,36 +462,7 @@ def indexMergedBAMs(infile, outfile):
 
 
 ###################################################################
-@merge(indexMergedBAMs, "mapping.sentinal")
-def mapping_qc(infiles, outfile):
-    ''' run mapping pipeline qc targets '''
 
-    to_cluster = False
-
-    statement = '''cd mapping.dir;
-                   nice python %(pipelinedir)s/pipeline_mapping.py
-                   make qc -v5 -p%(pipeline_mapping_jobs)s '''
-    P.run()
-
-    P.touch("mapping.sentinal")
-
-
-###################################################################
-@follows(mapping_qc)
-@originate("mapping.dir/geneset.dir/reference.gtf.gz")
-def buildReferenceGeneSet(outfile):
-    
-    to_cluster = False
-
-    statement = '''cd mapping.dir;
-                   nice python %(pipelinedir)s/pipeline_mapping.py
-                        make buildReferenceGeneSet
-                        -v5 -p%(pipeline_mapping_jobs)s '''
-
-    P.run()
-
-
-###################################################################
 @transform(os.path.join(PARAMS["annotations_dir"],
                         PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
            regex(".+/(.+).gtf.gz"),
@@ -591,19 +535,6 @@ def loadContextIntervalStats(infile, outfile):
 
 
 ###################################################################
-@transform(mapping_qc, regex("(.+)"),
-           "mapping.dir/view_mapping.load")
-def createViewMapping(infile, outfile):
-    ''' Create tables neccessary for mapping report '''
-
-    to_cluster = False
-    statement = '''cd mapping.dir;
-                   nice python %(scripts_dir)s/../../CGATPipelines/CGATPipelines/pipeline_mapping.py
-                   make createViewMapping -v5 -p1 '''
-    P.run()
-
-
-###################################################################
 @follows(mapping_qc,loadContextIntervalStats )
 def mapping():
     pass
@@ -613,8 +544,8 @@ def mapping():
 # Deduping, Counting, etc
 ###################################################################
 @follows(mkdir("deduped.dir"), run_mapping)
-@transform(indexMergedBAMs, regex("(.+)/merged_(.+)\.([^\.]+)\.bam.bai"),
-           inputs(r"\1/merged_\2.\3.bam"),
+@transform(indexMergedBAMs, regex("(.+)/merged_(.+).bam.bai"),
+           inputs(r"\1/merged_\2.bam"),
            r"deduped.dir/\2.bam")
 def dedup_alignments(infile, outfile):
     ''' Deduplicate reads, taking UMIs into account'''
@@ -622,30 +553,44 @@ def dedup_alignments(infile, outfile):
     outfile = P.snip(outfile, ".bam")
 
     job_memory="7G"
-    statement = ''' python %(project_src)s/UMI-tools/dedup_umi.py
+    statement = ''' umi_tools dedup
                     %(dedup_options)s
                     --output-stats=%(outfile)s
                     -I %(infile)s
-                    -S %(outfile)s.tmp.bam
+                    -S %(outfile)s.bam
                     -L %(outfile)s.log;
  
                     checkpoint;
 
-                    samtools sort %(outfile)s.tmp.bam %(outfile)s;
-                   
-                    checkpoint;
+                    samtools index %(outfile)s.bam ;''' 
 
-                    samtools index %(outfile)s.bam ;
- 
-                    checkpoint;
-
-                    rm %(outfile)s.tmp.bam'''
 
     P.run()
 
 
+@collate(dedup_alignments,
+         regex("(.+-.+)-(.+).bam"),
+         r"\1-union.bam")
+def get_union_bams(infile, outfile):
+    '''Merge replicates (as defined by thrid slot in name) to createView
+    "union" tracks '''
+
+    if len(infiles) == 1:
+        infile = infiles[0]
+        statement = ''' ln -sf %(infile)s %(outfile)s;
+                        checkpoint;
+                        ln -sf %(infile)s.bai %(outfile)s.bai; '''
+    else:
+        infiles = " ".join(infiles)
+        statement = ''' samtools merge %(infiles)s > %(outfile)s;
+                        checkpoint;
+                        samtools index %(outfile)s'''
+
+    P.run()
+       
 ###################################################################
-@transform([dedup_alignments,indexMergedBAMs], 
+@transform([dedup_alignments,indexMergedBAMs,
+            get_union_bams], 
            regex("(?:merged_)?(.+).bam(?:.bai)?"),
            r"\1.frag_length.tsv")
 def getFragLengths(infile, outfile):
@@ -658,9 +603,7 @@ def getFragLengths(infile, outfile):
                            -S %(outfile)s
                            -L %(outfile)s.log
                '''
-    if PARAMS["reads_paired"] == 1:
-        statement += "--paired=%s" % (
-            int(PARAMS["reads_length"]) - len(PARAMS["reads_bc_pattern"]))
+
     P.run()
 
 
@@ -697,7 +640,8 @@ def loadDedupedBamStats(infiles, outfile):
 
 
 ###################################################################
-@transform(dedup_alignments,
+@transform((dedup_alignments,
+            get_union_bams),
            suffix(".bam"),
            ".nspliced.txt")
 def getNspliced(infile, outfile):
@@ -744,65 +688,8 @@ def loadDedupedUMIStats(infiles, outfile):
 
 
 ###################################################################
-@follows(mkdir("saturation.dir"), run_mapping)
-@subdivide(indexMergedBAMs, regex(".+/merged_(.+)\.[^\.]+\.bam.bai"),
-       [r"saturation.dir/\1.%.3f.bam" % (1.0/(2 ** x))
-        for x in range(1, 6)] +
-       [r"saturation.dir/\1.%.3f.bam" % (x/10.0)
-        for x in range(6, 11, 1)])
-def subsetForSaturationAnalysis(infile, outfiles):
-    '''Perform subsetting of the original BAM files, dedup and
-    return the context stats. Test for resturn on investment for
-    further sequencing of the same libraries '''
-
-    track = re.match(".+/merged_(.+)\.[^\.]+\.bam", infile).groups()[0]
-    infile = P.snip(infile, ".bai")
-    statements = []
-    statement_template = '''
-                            python %%(project_src)s/UMI-tools/dedup_umi.py
-                              %%(dedup_options)s
-                              -I %(infile)s
-                              -L %(outfile)s.log
-                              -S %(outfile)s.tmp.bam
-                              --subset=%(subset).3f;
-                             checkpoint;
-                             samtools sort %(outfile)s.tmp.bam %(outfile)s;
-                             checkpoint;
-                             samtools index %(outfile)s.bam '''
-    for x in range(1, 6):
-        subset = 1.0/(2 ** x)
-        outfile = "saturation.dir/%%(track)s.%.3f" % subset
-        statements.append(statement_template % locals())
-
-    for x in range(6, 11):
-        subset = x/10.0
-        outfile = "saturation.dir/%%(track)s.%.3f" % subset
-        statements.append(statement_template % locals())
-
-    P.run()
-
-
-###################################################################
-@transform(subsetForSaturationAnalysis, suffix(".bam"), ".bamstats.tsv")
-def subsetBamStats(infile, outfile):
-    ''' Stats on the subset BAMs '''
-
-    job_options = "-l mem_free=500M"
-    statement = ''' python %(scripts_dir)s/bam2stats.py 
-                    --force-output < %(infile)s > %(outfile)s '''
-    P.run()
-
-
-###################################################################
-@merge(subsetBamStats, "subset_bam_stats.load")
-def loadSubsetBamStats(infiles, outfile):
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename= ".+/(.+-.+-.+)\.([0-9]+\.[0-9]+).bamstats.tsv",
-                         cat="track,subset")
-
-
-###################################################################
-@transform([indexMergedBAMs, dedup_alignments],
+@transform([indexMergedBAMs, dedup_alignments,
+            get_union_bams],
            regex("(?:merged_)?(.+).bam(?:.bai)?"),
            add_inputs(generateContextBed),
            r"\1.reference_context.tsv")
@@ -840,51 +727,7 @@ def loadContextStats(infiles, outfile):
 
 
 ###################################################################
-@transform(os.path.join(PARAMS["annotations_dir"],
-                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
-           regex(".+/(.+).gtf.gz"),
-           r"\1.flat.gtf.gz")
-def flattenGeneSet(infile, outfile):
-    ''' Get gtf with geneset flattened so that introns are definately
-    intron sequence '''
-
-    statement = '''python %(scriptsdir)s/gtf2gtf.py
-                          --method=sort
-                          --sort-order=gene+transcript
-                          -I %(infile)s
-                 | python %(scriptsdir)s/gtf2gtf.py
-                          --method=merge-exons
-                           -L %(outfile)s.log
-                           -S %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@transform(dedup_alignments, suffix(".bam"),
-           add_inputs(flattenGeneSet),
-           ".splicing_index")
-def calculateSplicingIndex(infiles, outfile):
-    '''Calculate the splicing index: number of reads
-    reads spliced at each junction divided by number of
-    reads not spliced'''
-
-    bamfile, gtffile = infiles
-    PipelineiCLIP.calculateSplicingIndex(bamfile,
-                                         gtffile,
-                                         outfile,
-                                         submit=True)
-
-
-@merge(calculateSplicingIndex, "splicing_index.load")
-def loadSplicingIndex(infiles, outfile):
-
-    P.concatenateAndLoad(infiles, outfile,
-                         regex_filename="deduped.dir/(.+).splicing_index")
-
-###################################################################
 @follows(loadContextStats,
-         
          loadDedupedBamStats,
          loadFragLengths,
          loadNspliced,
@@ -1000,7 +843,7 @@ def computeDistances(infiles, outfile):
 
     job_options="-l mem_free=2G"
 
-    statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
+    statement = '''python %(project_src)s/iCLIPlib/calculateiCLIPReproducibility.py
                    %(infiles)s
                    -L %(outfile)s.log
                    -t %(track)s
@@ -1032,7 +875,9 @@ def reproducibility():
 
 ###################################################################
 @follows(mkdir("counts.dir"))
-@transform(dedup_alignments, regex(".+/(.+).bam"),
+@transform([dedup_alignments,
+            get_union_bams],
+           regex(".+/(.+).bam"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
            r"counts.dir/\1.tsv.gz")
@@ -1040,201 +885,101 @@ def countReadsOverGenes(infiles, outfile):
     ''' use feature counts to quantify the number of tags on each gene'''
 
     bamfile, annotations = infiles
-
-    PipelineRnaseq.runFeatureCounts(
-        annotations,
-        bamfile,
-        outfile,
-        nthreads=PARAMS['featurecounts_threads'],
-        strand=1,
-        options=PARAMS['featurecounts_options'] + ' -O')
+    if PARAMS["use_centre"]==1:
+        use_centre = "--use-centre"
+        
+    statement = '''python %(SRCDIR)s/iCLIPlib/scripts/count_clip_sites.py
+                   -I %(annotations)s
+                   %(bamfile)s
+                   -f gene
+                   %(use_centre)s
+                   -S %(outfile)s '''
+    P.run()
 
 
 ###################################################################
 @merge(countReadsOverGenes,
        "counts.dir/track_counts.tsv.gz")
-def mergeCounts(infiles, outfile):
+def loadCounts(infiles, outfile):
     '''Merge feature counts data into one table'''
 
-    infiles = " ".join(infiles)
+    P.concatenateAndLoad(infiles, outfile,
+                         regex_filename="(.+).tsv.gz",
+                         options="-i track,gene_id")
 
-    statement=''' python %(scriptsdir)s/combine_tables.py
-                         -c 1
-                         -k 7
-                         --regex-filename='(.+).tsv.gz'
-                         --use-file-prefix
-                         %(infiles)s
-                         -L %(outfile)s.log
-               | gzip > %(outfile)s '''
-
-    P.run()
-
-
-###################################################################
-@transform(mergeCounts, suffix(".tsv.gz"), ".load")
-def loadCounts(infile, outfile):
-
-    P.load(infile, outfile, options="-i geneid")
 
 ###################################################################
 # Analysis
 ###################################################################
 @follows(mkdir("gene_profiles.dir"))
-@transform(dedup_alignments, regex(".+/(.+).bam"),
+@transform([dedup_alignments,
+            get_union_bams),
+           regex(".+/(.+).bam"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
-           r"gene_profiles.dir/\1.tsv")
-def calculateGeneProfiles(infiles, outfile):
+           r"gene_profiles.dir/\1.exons.tsv")
+def calculateGeneExonProfiles(infiles, outfile):
     ''' Calculate metagene profiles over protein coding genes
     for each sample'''
 
     infile, reffile = infiles
-    statement = '''python %(scripts_dir)s/bam2geneprofile.py
-                           --method=geneprofilewithintrons
-                           --bam-file=%(infile)s
-                           --gtf-file=%(reffile)s
-                           --normalize-transcript=total-sum
-                           --normalize-profile=area
-                           --log=%(outfile)s.log
-                           --output-filename-pattern=%(outfile)s.%%s
-                           > %(outfile)s '''
+
+    if PARAMS["use_centre"]==1:
+        use_centre = "--use-centre"
+        
+    statement= '''python %(SRCDIR)s/iCLIPlib/iCLIP_bam2geneprofile.py
+                  -I %(reffile)s
+                  -b 100
+                  --flank-bins=50
+                  --scale-flanks
+                  %(use_centre)s
+                  -S %(outfile)s
+                  -L %(outfile)s.log'''
+    
+    P.run()
+
+    
+###################################################################
+###################################################################
+@transform([dedup_alignments,
+            get_union_bams],
+           formatter(),
+           add_inputs(os.path.join(PARAMS["annotations_dir"],
+                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
+           r"gene_profiles.dir/{basename[0]}.introns.tsv")
+def calculateGeneIntronProfiles(infiles, outfile):
+    '''Get a metagene profile over concatenated introns'''
+
+    bamfile, gtffile = infiles
+
+    if PARAMS["use_centre"]==1:
+        use_centre = "--use-centre"
+        
+    statement = '''cgat gtf2gtf -I %(gtffile)s
+                                --method=exons2introns
+                                -L %(outfile)s.log
+                 | awk -F'\\t' 'BEGIN{OFS=FS} {$3="exon"; print}'
+                 | python %(project_src)s/iCLIPlib/scripts/iCLIP_bam2geneprofile.py
+                   -f 0
+                   %(bamfile)s
+                   %(use_centre)s
+                   --exon-bins=100
+                   -S %(outfile)s
+                   -L %(outfile)s.log; '''
 
     P.run()
 
-
-@merge(calculateGeneProfiles,
+    
+###################################################################
+@merge((calculateGeneExonProfiles,
+        calculateGeneIntronProfiles),
        "gene_profiles.load")
 def loadGeneProfiles(infiles, outfile):
 
-    infiles = [infile + ".geneprofilewithintrons.matrix.tsv.gz"
-               for infile in infiles]
-
     P.concatenateAndLoad(infiles, outfile,
-                          regex_filename='.+/(.+)\-(.+)\-(.+).tsv.geneprofilewithintrons.matrix.tsv.gz',
-                          cat = "factor,condition,rep",
+                          regex_filename='.+/(.+)\-(.+)\-(.+)\.(.+).tsv.gz',
+                          cat = "factor,condition,rep,",
                           options = "-i factor -i condition -i rep")
-
-###################################################################
-@follows(mapping_qc)
-@transform(os.path.join(PARAMS["annotations_dir"],
-                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
-           regex(".+/(.+).gtf.gz"),
-           r"\1.exons.gtf.gz")
-def transcripts2Exons(infile, outfile):
-    ''' Make each exon a seperate gene to allow quantitaion over exons
-    only keeps those exons longer than 100 base pairs'''
-    
-    tmp_outfile = P.snip(outfile, ".gtf.gz") + ".tmp.gtf.gz"
-    PipelineiCLIP.removeFirstAndLastExon(infile, tmp_outfile)
-
-    statement = '''python %(scripts_dir)s/gff2bed.py 
-                          --is-gtf 
-                           -I %(tmp_outfile)s 
-                           -L %(outfile)s.log
-                  | sort -k1,1 -k2,2n
-                  | mergeBed -i stdin -s -d 100 -c 4 -o distinct
-                  | awk '($3-$2) > 100 {print}'
-                  | awk 'BEGIN{OFS="\\t"} {$4=NR; print}'
-                  | python %(scripts_dir)s/bed2gff.py --as-gtf -L %(outfile)s.log
-                  | gzip -c > %(outfile)s '''
-    P.run()
-
-    os.unlink(tmp_outfile)
-
-
-###################################################################
-@follows(mapping_qc)
-@transform(os.path.join(PARAMS["annotations_dir"],
-                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
-           regex(".+/(.+).gtf.gz"),
-           r"\1.introns.gtf.gz")
-def transcripts2Introns(infile, outfile):
-    ''' Make each exon a seperate gene to allow quantitaion over exons'''
-
-    tmp_outfile = P.snip(outfile, ".gtf.gz") + ".tmp.gtf.gz"
-    PipelineiCLIP.removeFirstAndLastExon(infile, tmp_outfile)
-
-    statement = '''python %(scripts_dir)s/gtf2gtf.py
-                           -I %(tmp_outfile)s
-                          --log=%(outfile)s.log
-                           --method=exons2introns
-                  | python %(scripts_dir)s/gff2bed.py
-                          --is-gtf
-                           -L %(outfile)s.log
-                  | sort -k1,1 -k2,2n
-                  | mergeBed -i stdin -s -d 100 -c 4 -o distinct
-                  | awk 'BEGIN{OFS="\\t"} {$4=NR; print}'
-                  | python %(scripts_dir)s/bed2gff.py
-                          --as-gtf -L %(outfile)s.log
-                  | gzip -c > %(outfile)s '''
-    P.run()
-
-    os.unlink(tmp_outfile)
-
-###################################################################
-@product(dedup_alignments,
-         formatter(".+/(?P<TRACK>.+).bam"),
-         [transcripts2Exons, transcripts2Introns],
-         formatter(".+/geneset_all.(?P<INTERVALTYPE>.+).gtf.gz"),
-         "gene_profiles.dir/{TRACK[0][0]}.{INTERVALTYPE[1][0]}.log")
-def calculateExonProfiles(infiles, outfile):
-
-    infile, reffile = infiles
-
-    outfile = P.snip(outfile, ".log")
-    statement = '''python %(scriptsdir)s/bam2geneprofile.py
-                          --method=intervalprofile
-                          --bam-file=%(infile)s
-                          --gtf-file=%(reffile)s
-                          --normalize-transcript=total-sum
-                          --use-base-accuracy
-                          --normalize-profile=area
-                          --resolution-upstream=50
-                          --resolution-downstream=50
-                          --extension-upstream=50
-                          --extension-downstream=50
-                          --output-filename-pattern=%(outfile)s.%%s
-                          --log=%(outfile)s.log '''
-
-    P.run()
-
-@merge(calculateExonProfiles,
-       "exon_profiles.load")
-def loadExonProfiles(infiles, outfile):
-
-    infiles = [P.snip(infile,".log") + ".intervalprofile.matrix.tsv.gz"
-               for infile in infiles]
-
-    P.concatenateAndLoad(infiles, outfile,
-                          regex_filename='.+/(.+)\-(.+)\-(.+).(exons|introns).intervalprofile.matrix.tsv.gz',
-                          cat = "factor,condition,rep,interval",
-                          options = "-i factor -i condition -i rep")
-###################################################################
-@product(dedup_alignments,
-         formatter(".+/(?P<TRACK>.+).bam"),
-         [transcripts2Exons, transcripts2Introns],
-         formatter(".+/refcoding.(?P<INTERVALTYPE>.+).gtf.gz"),
-         "gene_profiles.dir/{TRACK[0][0]}.{INTERVALTYPE[1][0]}.tssprofile.log")
-def calculateExonTSSProfiles(infiles, outfile):
-
-    infile, reffile = infiles
-
-    outfile = P.snip(outfile, ".tssprofile.log")
-    statement = '''python %(scriptsdir)s/bam2geneprofile.py
-                          --method=tssprofile
-                          --bam-file=%(infile)s
-                          --gtf-file=%(reffile)s
-                          --normalize-transcript=total-sum
-                          --use-base-accuracy
-                          --normalize-profile=area
-                          --resolution-upstream=100
-                          --resolution-downstream=100
-                          --extension-inward=100
-                          --extension-outward=100
-                          --output-filename-pattern=%(outfile)s.%%s
-                          --log=%(outfile)s.tssprofile.log '''
-
-    P.run()
 
 
 ###################################################################
@@ -1251,20 +996,59 @@ def profiles():
 # Calling significant clusters
 ###################################################################
 @follows(mkdir("clusters.dir"), mapping_qc)
-@subdivide(dedup_alignments,
+@transform(dedup_alignments,
            regex(".+/(.+).bam"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
-           [r"clusters.dir/\1.bg.gz",
-            r"clusters.dir/\1.bed.gz"])
-def callSignificantClusters(infiles, outfiles):
+           r"clusters.dir/\1.sig_bases.bg.gz")
+def callSignificantBases(infiles, outfiles):
     '''Call bases as significant based on mapping depth in window
     around base'''
 
     bam, gtf = infiles
-    PipelineiCLIP.callClusters(bam, gtf, outfiles)
+    job_threads = PARAMS["clusters_threads"]
 
+    if PARAMS["use_centre"]==1:
+        centre = "--centre"
+    else:
+        centre = ""
+        
+    statement = ''' python %(project_src)s/scripts/significant_bases_by_randomisation.py
+                    -I %(gtf)s
+                    -b %(bam)s
+                    --spread=%(clusters_window_size)s
+                    -p %(job_threads)s
+                    %(centre)s
+                    -L %(outfile)s.log
+                    --threashold=%(clusters_pthresh)s
+                | bgzip > %(outfile)s;
 
+                checkpoint;
+
+                tabix -p bed %(outfile)s
+                '''
+
+    P.run()
+                    
+
+@transform(callSignificantBases,
+           suffix("sig_bases.bg.gz"),
+           "clusters.bed.gz")
+def callSignificantClusters(infile, outifle):
+    '''Join significant bases that are within in the cluster
+    distance of each other, using the max score as the score for
+    the cluster'''
+
+    statement='''bedtools merge 
+                  -i %(infile)s
+                  -d %(cluster_window_size)s
+                  -s
+                  -c 4 
+                  -o max
+                | gzip > %(outfile)s'''
+
+    P.run()
+    
 ###################################################################
 @collate(callSignificantClusters,
          regex("(.+/.+\-.+)\-(.+)\.bed.gz"),
@@ -1277,7 +1061,7 @@ def callReproducibleClusters(infiles, outfile):
 
 
 ###################################################################
-@transform(callSignificantClusters, suffix(".bg.gz"), ".count_bases")
+@transform(callSignificantBases, suffix(".bg.gz"), ".count_bases")
 def countCrosslinkedBases(infile, outfile):
     ''' Count number of crosslinked bases within gene models'''
 
@@ -1319,12 +1103,34 @@ def loadClusterCounts(infiles, outfile):
                          cat="sample,replicate",
                          has_titles=False)
 
+    
+###################################################################
+@transform(callSignificantBases,
+           suffix(".bg.gz"),
+           add_inputs(generateContextBed),
+           ".context_stats.tsv.gz")
+def getSigBaseContextStats(infiles, outfile):
+    '''Generate context stats for significant bases'''
 
+    bases, context = infiles
+    tmp = P.getTempFilename
+
+    statement =  '''  zcat %(clusters)s | sort -k1,1 -k2,2n > %(tmp)s.bed;
+                     checkpoint;
+                     cgat bam_vs_bed
+                           -a %(tmp)s.bed
+                           -b %(context)s -S  %(outfile)s;
+                     checkpoint;
+                     rm %(tmp)s.bed'''
+
+    P.run()
+
+    
 ###################################################################
 @transform([callSignificantClusters, callReproducibleClusters],
            suffix(".bed.gz"),
            add_inputs(generateContextBed),
-           ".context_stats.tsv.gz")
+           ".clusters.context_stats.tsv.gz")
 def getClusterContextStats(infiles, outfile):
     '''Generate context stats for called clusters'''
 
@@ -1333,7 +1139,7 @@ def getClusterContextStats(infiles, outfile):
 
     statement = '''  zcat %(clusters)s | sort -k1,1 -k2,2n > %(tmp)s.bed;
                      checkpoint;
-                     python %(scriptsdir)s/bam_vs_bed.py
+                     cgat bam_vs_bed
                            -a %(tmp)s.bed
                            -b %(context)s -S  %(outfile)s;
                      checkpoint;
@@ -1343,7 +1149,9 @@ def getClusterContextStats(infiles, outfile):
 
 
 ###################################################################
-@merge(getClusterContextStats, "clusters.dir/cluster_context_stats.load")
+@collate([getClusterContextStats, getSigBaseContextStats],
+         regex(".+/(.+).(bases|clusteres).context_stats.tsv.gz"),
+         r"clusters.dir/\2_context_stats.load")
 def loadClusterContextStats(infiles, outfile):
 
     P.concatenateAndLoad(infiles, outfile,
@@ -1363,167 +1171,90 @@ def clusters():
 ###################################################################
 # Motifs
 ###################################################################
-
-@transform([callSignificantClusters, callReproducibleClusters],
-           regex(".+/(.+).bed.gz"),
-           r"clusters.dir/\1.fa")
-def clusters2fasta(infile, outfile):
-    '''convert clusters to fasta ready for motif calling
-       only keep those greater than 8 bp long'''
-
-    statement = '''
-               zcat %(infile)s 
-              | awk '$3-$2 > 8'   
-              | python %(scriptsdir)s/bed2fasta.py
-                       -g %(genome_dir)s/%(genome)s
-                       -m dustmasker
-                       --use-strand
-                       --output-mode=segments
-                       
-                       -L %(outfile)s.log
-              | sed 's/[ |\:]/_/g' > %(outfile)s
-              '''
-
-    P.run()
-
-
-###################################################################
-@transform(os.path.join(PARAMS["annotations_dir"],
-                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
-           regex(".+/(.+).gtf.gz"),
-           r"\1.fa.gz")
-def getReferenceGenesetFasta(infile, outfile):
-    '''Collapse genesets onto single intervals and get fasta'''
-
-    logfile = P.snip(outfile, ".fa.gz") + ".log"
-
-    statement = '''python %(scriptsdir)s/gtf2gtf.py
-                           --method=merge-transcripts
-                            -I %(infile)s -L %(logfile)s
-                 | python %(scriptsdir)s/gff2bed.py 
-                            -L %(logfile)s
-                 | python %(scriptsdir)s/bed2fasta.py
-                            -g %(genome_dir)s/%(genome)s
-                            -m dustmasker
-                            --use-strand
-                            -L %(outfile)s.log 
-                 | gzip > %(outfile)s'''
-
-    P.run()
-
-
-###################################################################
-@transform(getReferenceGenesetFasta,
-           regex(".+/(.+).fa.gz"),
-           r"meme.dir/\1.model")
-def getMEMEBackgroundModel(infile, outfile):
-    '''Get a background markov model for MEME based on the input
-    sequence to the cluster calling algorithmn '''
-
-    statement = '''zcat %(infile)s
-                 | fasta-get-markov -m %(meme_background_order)s
-                                    --norc
-                 > %(outfile)s 2> %(outfile)s.log '''
-    P.run()
-
-
-###################################################################
-@follows(mkdir("meme.dir"))
-@transform(clusters2fasta, regex(".+/(.+).fa"),
-           r"meme.dir/\1.meme")
-def runMeme(infiles, outfile):
-    '''Run Meme to find motifs. All intervals are currently used
-    all of each interval is used'''
-
-    foreground = infiles
-    PARAMS["meme_revcomp"] = False
-    PipelineMotifs.PARAMS = PARAMS
+@follows(mkdir("kmers"))
+@transform([dedup_alignments,
+            get_union_bams,
+            callSignificantBases],
+           add_inputs(os.path.join(PARAMS["annotations_dir"],
+                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
+                      os.path.join(PARAMS["genome_dir"],
+                                   PARAMS["genome"])),
+           regex(".+/(.+)(.bam|.bg.gz"),
+           [r"kmers.dir/\1.%smers.tsv.gz" % kmer
+            for kmer in PARAMS["kmer_lengths"].split(",")])
+def get_kmer_enrichments(infiles, outfiles):
+    ''' Look for enrichment of kmers in crosslinked bases. Will
+    examine both significant bases and all bases and look for 
+    kmers of a length up that specified in ini'''
     
-    tmpfile = P.getTempFilename(shared=True)
-    logfile = outfile + ".log"
-    PipelineiCLIP.subsampleNReadsFromFasta(foreground, tmpfile,
-                                           PARAMS["meme_max_sequences"],
-                                           logfile)
-    PipelineMotifs.runMEMEOnSequences(tmpfile, outfile)
+    bamfile, geneset, genome = infiles
 
-    os.unlink(tmpfile)
+    if bamfile.endswith(".bam"):
+        sites = "-b " + bamfile
+    elif bamfile.endswith(".bg.gz"):
+        sites = "--bed=" + bamfile
 
+    if PARAMS["use_centre"]==1:
+        centre="--use_centre"
+    else:
+        centre=""
+        
+    statement_template = '''python %(project_src)s/scripts/iCLIP_kmer_enerichment.py
+                                    %(sites)s
+                                    %(centre)s
+                                   -f %(genome)s
+                                   -k %(kmer)s
+                                   -s %%(cluster_window_size)s
+                                   -p %%(kmers_threads)s
+                                   -I %(geneset)s
+                                   -S %(outfile)s
+                                   -L %(outfile)s.log'''
 
- ###################################################################
-@merge(runMeme, "meme_summary.load")
-def loadMemeSummary(infiles, outfile):
-    ''' load information about motifs into database '''
-
-    outf = P.getTempFile(".")
-    outf.write("track\n")
+    statements = []
     
-    for infile in infiles:
-        if IOTools.isEmpty(infile):
-            continue
-        motif = P.snip(infile, ".meme")
-        outf.write("%s\n" % motif)
+    for kmer in PARAMS["kmer_lengths"].split(","):
+        statements.append(statement_template % locals())
 
-    outf.close()
-
-    P.load(outf.name, outfile)
-
-    os.unlink(outf.name)
+    P.run()
 
 
 ###################################################################
-@follows(mkdir("dreme.dir"))
-@transform(clusters2fasta, regex(".+/(.+).fa"),
-           r"dreme.dir/\1.txt")
-def runDREME(infile, outfile):
-    '''run Dreme on full set of clusters, using shuffled
-    input as background'''
+@collate(get_kmer_enrichments,
+         formatter("[^\.]+\.[0-9]+mer.tsv.gz"),
+         "kmers.dir/all_bases.kmers.load")
+def load_dedup_kmers(infiles, outfile):
 
-    PipelineMotifs.runDREME(infile, outfile)
+    P.concatenateAndLoad(infiles, outfile,
+                         regex_filename="(.+)-(.+)[-\.](R.+|union)\.([0-9]+mer).tsv.gz",
+                         cat="factor,tag,replicate,k",
+                         options="-i factor -i tag -i replicate -i k -kmer")
 
+
+###################################################################   
+@collate(get_kmer_enrichments,
+         formatter("[^\.]+\.sig_bases.[0-9]+mer.tsv.gz"),
+         "kmers.dir/all_bases.kmers.load")
+def load_sig_base_kmers(infiles, outfile):
+
+    P.concatenateAndLoad(infiles, outfile,
+                         regex_filename="(.+)-(.+)[-\.](R.+|union)\.([0-9]+mer).tsv.gz",
+                         cat="factor,tag,replicate,k",
+                         options="-i factor -i tag -i replicate -i k -kmer")
+
+    
 ###################################################################
-@follows(loadMemeSummary)
-def meme():
+@follows(load_dedup_kmers,
+         load_sig_base_kmers)
+def kmers():
     pass
-
-
-###################################################################
-@follows(meme, runDREME)
-def motifs():
-    pass
-
 
 
 ###################################################################
 # Data Export
 ###################################################################
-@collate(dedup_alignments,
-         regex("(.+\-.+)\-(.+).bam"),
-         r"\1.union.bam")
-def makeUnionBams(infiles, outfile):
-    '''Merge replicates together'''
-
-    outfile = os.path.abspath(outfile)
-
-    if len(infiles) == 1:
-        infile = os.path.abspath(infiles[0])
-        statement = '''ln -sf %(infile)s %(outfile)s;
-                       checkout;
- 
-                       ln -sf %(infile)s.bai %(outfile)s.bai;'''
-    else:
-
-        statement = ''' samtools merge -f %(outfile)s %(infiles)s;
-                        checkpoint;
-
-                        samtools index %(outfile)s'''
-
-    infiles = " ".join(infiles)
-
-    P.run()
-
 @follows(mkdir("bigWig"))
 @subdivide([dedup_alignments,
-            makeUnionBams], 
+            get_union_bams], 
            regex(".+/(.+).bam"),
           [r"bigWig/\1_plus.bw",
            r"bigWig/\1_minus.bw"])
@@ -1685,7 +1416,7 @@ def export():
 ## primary targets
 ###################################################################
 @follows(PrepareReads, mapping, MappingStats, reproducibility,
-         profiles, clusters, motifs, export)
+         profiles, clusters, kmers, export)
 def full():
     pass
 
