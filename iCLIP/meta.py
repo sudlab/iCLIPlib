@@ -422,3 +422,25 @@ def get_window(profile, position, upstream, downstream):
     window.index = window.index - position
     return window
 
+
+def transcript_region_meta(transcript, getter, regions, names, bins, length_norm=True):
+    
+    region_exons = [region_fun(transcript) for region_fun in regions]
+    
+    region_lengths = [sum(x.end - x.start for x in r) for r in region_exons]
+    region_exons = [r for r, l in zip(region_exons, region_lengths) if l > 0]
+    region_lengths = [l for l in region_lengths if l > 0]
+    bins = [b for b, l in zip(bins, region_lengths) if l > 0]
+    names = [n for n, l in zip(names, region_lengths) if l > 0]
+    
+    region_counts = [count_transcript(t, getter) for t in region_exons]
+    region_binned_counts = [bin_counts(c, l, b) for c, l, b in
+                            zip(region_counts, region_lengths, bins)]
+    if length_norm:
+        region_binned_counts = [x*b/l for x, l, b in zip(region_binned_counts,
+                                                         region_lengths,
+                                                         bins)]
+        
+    profile = pd.concat(region_binned_counts, keys=names,
+                        names=["region", "region_bin"])
+    return profile
