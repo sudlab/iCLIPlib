@@ -102,8 +102,7 @@ def callReproducibleClusters(infiles, outfile, min_overlap):
                            -L /dev/null
                             ) '''
     infiles = " ".join(
-        [merge_template % infile)
-        
+        [merge_template % infile
          for infile in infiles])
     logfile = P.snip(outfile, ".bed.gz")
     statement = ''' cat %(infiles)s

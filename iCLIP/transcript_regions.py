@@ -178,5 +178,5 @@ def middle_exons(transcript):
 
 def exons(transcript):
 
-    e = [e for e int transcript if e.feature == "exon"]
+    e = [e for e in transcript if e.feature == "exon"]
     return (e)

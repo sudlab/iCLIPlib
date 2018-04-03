@@ -74,7 +74,7 @@ def main(argv=None):
     parser.add_option("-n", "--num-randomizations", dest="randomisations",
                        type="int", default=100,
                        help="Number of times to permute profiles to assess"
-nos                            "significance of enrichment")
+                            "significance of enrichment")
     parser.add_option("-p", "--processes", dest="proc", type="int",
                       default=None,
                       help="Use this many processesors for multiprocessing")

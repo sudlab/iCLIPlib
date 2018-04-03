@@ -50,9 +50,12 @@ import os
 import CGAT.Experiment as E
 import pysam
 import CGAT.IOTools as IOTools
-import iCLIP.transcript_regions
+import iCLIP.transcript_regions as transcript_regions
+from iCLIP.meta import transcript_region_meta
 from itertools import product
-
+from functools import partial
+import pandas
+from CGAT import GTF
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
 
@@ -119,15 +122,15 @@ def main(argv=None):
     parser.add_option("--no-gene-norm", dest="row_norm", action="store_false",
                       default=True,
                       help="Do not normalise profile from each gene")
-    parser.add_option("--region-length-correction", action="store_true",
+    parser.add_option("--region-length-correction", dest="rlc", action="store_true",
                       default=False,
                       help="Correct for regions of different legnths. Calculates something"
                       "akin to an FPKM for the region")
     parser.add_option("-r", "--regions", dest="regions", type="string",
                       default="flank5,exons,flank3",
                       help="Which regions to use. Choose from %s" %
-                      ", ".join(region_dict.keys()))
-    parser.add_option("-b", "--bins", dest="regions", action="store",
+                      ", ".join(regions_dict.keys()))
+    parser.add_option("-b", "--bins", dest="bins", action="store",
                       default=None,
                       help="Bins to use. If not specified defaults for the"
                       "chosen regions will be used")
@@ -145,8 +148,8 @@ def main(argv=None):
     else:
         bam = iCLIP.make_getter(bamfile=args[0], centre=options.centre)
 
-    regions_dict['5flanks'] = partial(regions_dict['5flanks'], length=options.flanks)
-    regions_dict['3flanks'] = partial(regions_dict['3flanks'], length=options.flanks)
+    regions_dict['5flank'] = partial(regions_dict['5flank'], length=options.flanks)
+    regions_dict['3flank'] = partial(regions_dict['3flank'], length=options.flanks)
 
     names = options.regions.split(",")
     regions = [regions_dict[r] for r in names]
@@ -158,21 +161,24 @@ def main(argv=None):
     else:
         bins = [default_bins[r] for r in names]
         
-    index = (product([n], range(bins[n])) for n in names)
+    index = [list(product([n], range(b))) for n,b in zip(names, bins)]
+    index = sum(index, [])
+    index = pandas.MultiIndex.from_tuples(index, names=["region", "region_bin"])
     
     profile = pandas.Series(
-        index=pandas.MultiIndex.from_tuples(index, names = ["region", "region_bin"]))
+        index=index)
     accumulator = list()
     
     transcript_interator = GTF.transcript_iterator(GTF.iterator(options.stdin))
 
     for transcript in transcript_interator:
-        this_profile = transcript_meta(transcript, getter, regions, names, bins)
+        this_profile = transcript_region_meta(transcript, bam, regions, names, bins,
+                                       length_norm=options.rlc)
 
         if options.pseudo_count:
             this_profile = profile.reindex(index, fill_value=0) + pseudo_count
 
-        if row_norm:
+        if options.row_norm:
             this_profile = this_profile/this_profile.sum()
     
         profile = profile.add(this_profile, fill_value=0)
@@ -184,6 +190,7 @@ def main(argv=None):
     if options.normalize_profile:
         profile = profile/profile.sum()
 
+    profile = profile.reindex(names, level="region")
     profile.name = "density"
     profile = profile.reset_index()
     profile.index.name = "bin"

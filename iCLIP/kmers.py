@@ -3,13 +3,21 @@ import pandas as pd
 import numpy as np
 import collections
 import itertools
-
+import string
 import CGAT.GTF as GTF
 import CGAT.Experiment as E
 
 from utils import spread, rand_apply, AMBIGUITY_CODES
 from counting import count_transcript, count_intervals
 
+trans = string.maketrans('ATGCN', 'TACGN')
+
+def revcomp(sequence):
+
+    sequence = sequence.translate(trans)
+    sequence = sequence[::-1]
+
+    return sequence
 
 ##################################################
 def find_all_matches(sequence, regexes):
@@ -215,8 +223,11 @@ def _get_counts_and_sequence(gtf_iterator, bam, fasta,
 
         # exons
         exons = GTF.asRanges(transcript, "exon")
-        sequence = "".join(fasta.getSequence(contig, strand, exon[0], exon[1])
+        sequence = "".join(fasta.getSequence(contig, "+", exon[0], exon[1])
                            for exon in exons)
+        if strand == "-":
+            sequence = revcomp(sequence)
+            
         exon_counts = count_transcript(transcript, bam)
         yield (exon_counts, sequence)
 
@@ -229,7 +240,10 @@ def _get_counts_and_sequence(gtf_iterator, bam, fasta,
 
         for intron in intron_intervals:
             
-            seq = fasta.getSequence(contig, strand, intron[0], intron[1])
+            seq = fasta.getSequence(contig, "+", intron[0], intron[1])
+            if strand == "-":
+                seq = revcomp(seq)
+                
             profile = intron_counts.loc[float(intron[0]):float(intron[1])]
             profile.index = profile.index - intron[0]
             yield (profile, seq)

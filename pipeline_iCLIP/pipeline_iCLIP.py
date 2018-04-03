@@ -154,7 +154,8 @@ import PipelineiCLIP
 # load options from the config file
 import CGATPipelines.Pipeline as P
 P.getParameters(
-    ["%s.ini" % P.snip(__file__, ".py"),
+    [os.path.join(os.path.dirname(__file__), "configuration",
+                  "pipeline.ini"),
      "pipeline.ini"])
 
 PARAMS = P.PARAMS
@@ -163,6 +164,8 @@ PARAMS_ANNOTATIONS = P.peekParameters( PARAMS["annotations_dir"],
 
 PipelineiCLIP.PARAMS = PARAMS
 PipelineiCLIP.PARAMS_ANNOTATIONS = PARAMS_ANNOTATIONS
+PARAMS["project_src"] = os.path.join(os.path.dirname(__file__),
+                           "..")
 
 ###################################################################
 # Helper functions mapping tracks to conditions, etc
@@ -328,8 +331,8 @@ def demux_fastq(infiles, outfiles):
 
 ###################################################################
 @follows(mkdir("fastqc"))
-@transform(demux_fastq, regex(".+/(.+).fastq(.*)\.gz"),
-           r"fastqc/\1\2.fastqc")
+@transform(demux_fastq, regex(".+/(.+).fastq.gz"),
+           r"fastqc/\1.fastqc")
 def qcDemuxedReads(infile, outfile):
     ''' Run fastqc on the post demuxing and trimmed reads'''
 
@@ -393,12 +396,11 @@ def mapping_files():
 @follows(mkdir("mapping.dir"), demux_fastq)
 @transform(demux_fastq,
            regex(".+/(.+).fastq.gz"),
-           "mapping.dir/\1.bam")
-def run_mapping(infile, outfiles):
+           r"mapping.dir/\1.bam")
+def run_mapping(infile, outfile):
     ''' Map reads with the specified read mapper '''
 
-
-    if PARAMS["mapper"]=="star":
+    if PARAMS["mapper"] == "star":
         job_threads=PARAMS["star_threads"]
         job_memory=PARAMS["star_memory"]
         star_mapping_genome = PARAMS["star_genome"] or PARAMS["genome"]
@@ -406,7 +408,7 @@ def run_mapping(infile, outfiles):
             executable=P.substituteParameters(**locals())["star_executable"],
             strip_sequence=0)
         
-    elif PARAMS["mapper"]=="bowtie":
+    elif PARAMS["mapper"] == "bowtie":
          job_threads = PARAMS["bowtie_threads"]
          job_memory = PARAMS["bowtie_memory"]
 
@@ -464,7 +466,7 @@ def generateContextBed(infile, outfile):
                           PARAMS_ANNOTATIONS["interface_contigs"])
     statement = ''' zcat %(infile)s
                   | awk '$3=="exon"'
-                  | python %(scripts_dir)s/gtf2gtf.py
+                  | cgat gtf2gtf
                     --method=exons2introns
                     
                      -L %(outfile)s.log
@@ -475,10 +477,10 @@ def generateContextBed(infile, outfile):
 
                   zcat %(infile)s %(outfile)s.tmp.gtf.gz
                   | awk '$3=="exon" || $3=="intron"'
-                  | python %(scripts_dir)s/gff2bed.py
+                  | cgat gff2bed
                     --set-name=source
                      -L %(outfile)s.log
-                  | sort -k1,1 -k2,2n
+                  | bedtools sort -i - -faidx %(genome)s
                     > %(outfile)s.tmp.bed;
                     
                     checkpoint;
@@ -506,7 +508,7 @@ def generateContextBed(infile, outfile):
 def getContextIntervalStats(infile, outfile):
     ''' Generate length stastics on context file '''
 
-    statement = ''' python %(scripts_dir)s/bed2stats.py
+    statement = ''' cgat bed2stats
                             --aggregate-by=name
                             -I %(infile)s
                     | gzip > %(outfile)s '''
@@ -524,7 +526,7 @@ def loadContextIntervalStats(infile, outfile):
 
 
 ###################################################################
-@follows(mapping_qc,loadContextIntervalStats )
+@follows(loadContextIntervalStats )
 def mapping():
     pass
 
@@ -559,7 +561,7 @@ def dedup_alignments(infile, outfile):
 @collate(dedup_alignments,
          regex("(.+-.+)-(.+).bam"),
          r"\1-union.bam")
-def get_union_bams(infile, outfile):
+def get_union_bams(infiles, outfile):
     '''Merge replicates (as defined by thrid slot in name) to createView
     "union" tracks '''
 
@@ -570,7 +572,7 @@ def get_union_bams(infile, outfile):
                         ln -sf %(infile)s.bai %(outfile)s.bai; '''
     else:
         infiles = " ".join(infiles)
-        statement = ''' samtools merge %(infiles)s > %(outfile)s;
+        statement = ''' samtools merge %(outfile)s %(infiles)s;
                         checkpoint;
                         samtools index %(outfile)s'''
 
@@ -586,7 +588,7 @@ def get_indexed_bed(infile, outfile):
     '''Convert BAMs of reads into beds of signal'''
 
     outfile = P.snip(outfile, ".gz")
-    statement = '''python %(project_src)s/iCLIP2bigWig.py 
+    statement = '''python %(project_src)s/scripts/iCLIP2bigWig.py 
                      -I %(infile)s
                      %(outfile)s
                      --format=bed;
@@ -612,7 +614,8 @@ def getFragLengths(infile, outfile):
 
     intrack = re.match("(.+).bam(?:.bai)?", infile).groups()[0]
 
-    statement = ''' python %(project_src)s/length_stats.py
+    curdir = os.path.dirname(__file__)
+    statement = ''' python %(curdir)s/length_stats.py
                            -I %(intrack)s.bam
                            -S %(outfile)s
                            -L %(outfile)s.log
@@ -638,7 +641,7 @@ def loadFragLengths(infiles, outfile):
 def dedupedBamStats(infile, outfile):
     ''' Calculate statistics on the dedeupped bams '''
 
-    statement = '''python %(scripts_dir)s/bam2stats.py
+    statement = '''cgat bam2stats
                          --force-output
                           < %(infile)s > %(outfile)s '''
 
@@ -683,7 +686,8 @@ def loadNspliced(infiles, outfile):
 def deduped_umi_stats(infile, outfile):
     ''' calculate histograms of umi frequencies '''
 
-    statement = '''python %(project_src)s/umi_hist.py
+    curdir = os.path.dirname(__file__)
+    statement = '''python %(curdir)s/umi_hist.py
                            -I %(infile)s
                            -L %(outfile)s.log
                   | gzip > %(outfile)s '''
@@ -712,7 +716,7 @@ def buildContextStats(infiles, outfile):
 
     infile, reffile = infiles
     infile = re.match("(.+.bam)(?:.bai)?", infile).groups()[0]
-    statement = ''' python %(scripts_dir)s/bam_vs_bed.py
+    statement = ''' cgat bam_vs_bed
                    --min-overlap=0.5
                    --log=%(outfile)s.log
                    %(infile)s %(reffile)s
@@ -745,8 +749,7 @@ def loadContextStats(infiles, outfile):
          loadDedupedBamStats,
          loadFragLengths,
          loadNspliced,
-         loadDedupedUMIStats,
-         loadSplicingIndex)
+         loadDedupedUMIStats)
 def MappingStats():
     pass
 
@@ -764,7 +767,7 @@ def calculateReproducibility(infiles, outfile):
     job_options = "-l mem_free=1G"
     infiles = " ".join(infiles)
 
-    statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
+    statement = '''python %(project_src)s/scripts/calculateiCLIPReproducibility.py
                    %(infiles)s
                    -L %(outfile)s.log
                  | gzip > %(outfile)s '''
@@ -781,37 +784,11 @@ def reproducibilityAll(infiles, outfile):
     job_options = "-l mem_free=10G"
     infiles = " ".join(infiles)
 
-    statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
+    statement = '''python %(project_src)s/scripts/calculateiCLIPReproducibility.py
                    %(infiles)s
                    -L %(outfile)s.log
                  | gzip > %(outfile)s '''
     P.run()
-
-
-###################################################################
-@follows(mkdir("reproducibility.dir"))
-@transform(dedup_alignments,
-           regex(".+/(.+).bam"),
-           add_inputs("deduped.dir/%s*.bam" % PARAMS["experiment_input"]),
-           r"reproducibility.dir/\1_vs_control.reproducibility.tsv.gz")
-def reproducibilityVsControl(infiles, outfile):
-    '''Test what fraction of the locations in each bam also appear
-    in the control files'''
-
-    track = infiles[0]
-    if track in infiles[1:]:
-        P.touch(outfile)
-    else:
-        job_options = "-l mem_free=1G"
-
-        infiles = " ".join(infiles)
-
-        statement = '''python %(project_src)s/calculateiCLIPReproducibility.py
-                   %(infiles)s
-                   -L %(outfile)s.log
-                   -t %(track)s
-                 | gzip > %(outfile)s '''
-        P.run()
 
 
 ###################################################################
@@ -832,19 +809,6 @@ def loadReproducibilityAll(infile, outfile):
 
 
 ###################################################################
-@merge(reproducibilityVsControl,
-       "reproducibility.dir/reproducibility_vs_control.load")
-def loadReproducibilityVsControl(infiles, outfile):
-
-    infiles = [infile for infile in infiles 
-               if not PARAMS["experiment_input"] in infile]
-
-    P.concatenateAndLoad(infiles, outfile, cat="Experiment",
-                         regex_filename=".+/(.+\-.+)\-.+_vs_control.reproducibility.tsv.gz",
-                         options = "-i File -i fold -i level")
-
-
-###################################################################
 @permutations(dedup_alignments, formatter(".+/(?P<TRACK>.+).bam"),
               2,
               "reproducibility.dir/{TRACK[0][0]}_vs_{TRACK[1][0]}.tsv.gz")
@@ -857,7 +821,7 @@ def computeDistances(infiles, outfile):
 
     job_options="-l mem_free=2G"
 
-    statement = '''python %(project_src)s/iCLIPlib/calculateiCLIPReproducibility.py
+    statement = '''python %(project_src)s/scripts/calculateiCLIPReproducibility.py
                    %(infiles)s
                    -L %(outfile)s.log
                    -t %(track)s
@@ -881,7 +845,6 @@ def loadDistances(infiles, outfile):
 ###################################################################
 @follows(loadReproducibility,
          loadReproducibilityAll,
-         loadReproducibilityVsControl,
          loadDistances)
 def reproducibility():
     pass
@@ -898,10 +861,10 @@ def countReadsOverGenes(infiles, outfile):
     ''' use feature counts to quantify the number of tags on each gene'''
 
     bamfile, annotations = infiles
-    if PARAMS["use_centre"]==1:
+    if PARAMS["reads_use_centre"]==1:
         use_centre = "--use-centre"
         
-    statement = '''python %(SRCDIR)s/iCLIPlib/scripts/count_clip_sites.py
+    statement = '''python %(project_src)s/scripts/count_clip_sites.py
                    -I %(annotations)s
                    --bed=%(bamfile)s
                    -f gene
@@ -936,10 +899,12 @@ def calculateGeneExonProfiles(infiles, outfile):
 
     infile, reffile = infiles
 
-    if PARAMS["use_centre"]==1:
+    if PARAMS["reads_use_centre"]==1:
         use_centre = "--use-centre"
+    else:
+        use_centre = ""
         
-    statement= '''python %(SRCDIR)s/iCLIPlib/iCLIP_bam2geneprofile.py
+    statement= '''python %(project_src)s/scripts/iCLIP_bam2geneprofile.py
                   -I %(reffile)s
                   -b 100
                   --flank-bins=50
@@ -964,14 +929,17 @@ def calculateGeneIntronProfiles(infiles, outfile):
 
     bamfile, gtffile = infiles
 
-    if PARAMS["use_centre"]==1:
+    if PARAMS["reads_use_centre"]==1:
         use_centre = "--use-centre"
+    else:
+        use_centre = ""
+
         
     statement = '''cgat gtf2gtf -I %(gtffile)s
                                 --method=exons2introns
                                 -L %(outfile)s.log
                  | awk -F'\\t' 'BEGIN{OFS=FS} {$3="exon"; print}'
-                 | python %(project_src)s/iCLIPlib/scripts/iCLIP_bam2geneprofile.py
+                 | python %(project_src)s/scripts/iCLIP_bam2geneprofile.py
                    -f 0
                    --bed=%(bamfile)s
                    %(use_centre)s
@@ -995,11 +963,7 @@ def loadGeneProfiles(infiles, outfile):
 
 
 ###################################################################
-@follows(calculateExonTSSProfiles,
-         calculateGeneProfiles,
-         calculateExonProfiles,
-         loadExonProfiles,
-         loadGeneProfiles)
+@follows(loadGeneProfiles)
 def profiles():
     pass
 
@@ -1007,32 +971,32 @@ def profiles():
 ###################################################################
 # Calling significant clusters
 ###################################################################
-@follows(mkdir("clusters.dir"), mapping_qc)
+@follows(mkdir("clusters.dir"))
 @transform(get_indexed_bed,
            regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
            r"clusters.dir/\1.sig_bases.bed.gz")
-def callSignificantBases(infiles, outfiles):
+def callSignificantBases(infiles, outfile):
     '''Call bases as significant based on mapping depth in window
     around base'''
 
     bam, gtf = infiles
     job_threads = PARAMS["clusters_threads"]
 
-    if PARAMS["use_centre"]==1:
+    if PARAMS["reads_use_centre"]==1:
         centre = "--centre"
     else:
         centre = ""
         
     statement = ''' python %(project_src)s/scripts/significant_bases_by_randomisation.py
                     -I %(gtf)s
-                    -bed=%(bam)s
+                    --bed=%(bam)s
                     --spread=%(clusters_window_size)s
                     -p %(job_threads)s
                     %(centre)s
                     -L %(outfile)s.log
-                    --threashold=%(clusters_pthresh)s
+                    --threshold=%(clusters_pthresh)s
                 | bgzip > %(outfile)s;
 
                 checkpoint;
@@ -1054,7 +1018,7 @@ def callSignificantClusters(infile, outifle):
 
     statement='''bedtools merge 
                   -i %(infile)s
-                  -d %(cluster_window_size)s
+                  -d %(clusters_window_size)s
                   -s
                   -c 4 
                   -o max
@@ -1184,15 +1148,15 @@ def clusters():
 ###################################################################
 # Motifs
 ###################################################################
-@follows(mkdir("kmers"))
+@follows(mkdir("kmers.dir"))
 @transform([dedup_alignments,
             get_union_bams,
             callSignificantBases],
+           regex(".+/(.+)(.bam|.bed.gz)"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
                       os.path.join(PARAMS["genome_dir"],
                                    PARAMS["genome"])),
-           regex(".+/(.+)(.bam|.bed.gz"),
            [r"kmers.dir/\1.%smers.tsv.gz" % kmer
             for kmer in PARAMS["kmer_lengths"].split(",")])
 def get_kmer_enrichments(infiles, outfiles):
@@ -1207,25 +1171,25 @@ def get_kmer_enrichments(infiles, outfiles):
     elif bamfile.endswith(".bg.gz"):
         sites = "--bed=" + bamfile
 
-    if PARAMS["use_centre"]==1:
+    if PARAMS["reads_use_centre"]==1:
         centre="--use_centre"
     else:
         centre=""
         
-    statement_template = '''python %(project_src)s/scripts/iCLIP_kmer_enerichment.py
+    statement_template = '''python %%(project_src)s/scripts/iCLIP_kmer_enrichment.py
                                     %(sites)s
                                     %(centre)s
                                    -f %(genome)s
                                    -k %(kmer)s
-                                   -s %%(cluster_window_size)s
-                                   -p %%(kmers_threads)s
+                                   -s %%(clusters_window_size)s
+                                   -p %%(kmer_threads)s
                                    -I %(geneset)s
                                    -S %(outfile)s
                                    -L %(outfile)s.log'''
 
     statements = []
     
-    for kmer in PARAMS["kmer_lengths"].split(","):
+    for outfile, kmer in zip(outfiles, PARAMS["kmer_lengths"].split(",")):
         statements.append(statement_template % locals())
 
     P.run()
@@ -1275,7 +1239,7 @@ def generateBigWigs(infile, outfiles):
     '''Generate plus and minus strand bigWigs from BAM files '''
 
     out_pattern = P.snip(outfiles[0], "_plus.bw")
-    statement = '''python %(project_src)s/iCLIP2bigWig.py
+    statement = '''python %(project_src)s/scripts/iCLIP2bigWig.py
                           -I %(infile)s
                           -L %(out_pattern)s.log
                           %(out_pattern)s '''
@@ -1435,7 +1399,7 @@ def full():
     pass
 
 
-@follows( mkdir( "report" ), createViewMapping)
+@follows( mkdir( "report" ))
 def build_report():
     '''build report from scratch.'''
 
@@ -1455,7 +1419,7 @@ def build_report():
     P.run_report( clean = True )
 
 
-@follows(mkdir("report"), createViewMapping)
+@follows(mkdir("report"))
 def update_report():
     '''update report.'''
 
