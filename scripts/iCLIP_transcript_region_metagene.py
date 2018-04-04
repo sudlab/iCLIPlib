@@ -173,7 +173,7 @@ def main(argv=None):
 
     for transcript in transcript_interator:
         this_profile = transcript_region_meta(transcript, bam, regions, names, bins,
-                                       length_norm=options.rlc)
+                                              length_norm=options.rlc)
 
         if options.pseudo_count:
             this_profile = profile.reindex(index, fill_value=0) + pseudo_count

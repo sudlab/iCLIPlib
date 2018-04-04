@@ -152,6 +152,10 @@ def introns(transcript):
 def first_exon(transcript):
 
     exons = [e for e in transcript if e.feature == "exon"]
+
+    if len(exons) < 3:
+        return list()
+    
     if exons[0].strand == "-":
         exons.sort(key=lambda x: x.end, reverse=True)
     else:
@@ -162,6 +166,10 @@ def first_exon(transcript):
 def last_exon(transcript):
 
     exons = [e for e in transcript if e.feature == "exon"]
+
+    if len(exons) < 3:
+        return list()
+
     if exons[0].strand == "-":
         exons.sort(key=lambda x: x.end, reverse=True)
     else:
@@ -172,6 +180,10 @@ def last_exon(transcript):
 def middle_exons(transcript):
 
     exons = [e for e in transcript if e.feature == "exon"]
+
+    if len(exons) < 3:
+        return list()
+
     exons.sort(key=lambda x: x.start)
     return exons[1:-1]
 
