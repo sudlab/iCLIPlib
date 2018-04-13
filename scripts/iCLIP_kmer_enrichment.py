@@ -78,6 +78,19 @@ def main(argv=None):
     parser.add_option("-p", "--processes", dest="proc", type="int",
                       default=None,
                       help="Use this many processesors for multiprocessing")
+    parser.add_option("-b", "--bed", dest="bedfile", type="string",
+                      default=None,
+                      help="Use signal from bedfile rather than BAM. File must"
+                      "be compressed with bgzip and indexed with tabix")
+    parser.add_option("-w", "--bigwig", "--plus-bw", dest="plus_wig",
+                      default=None,
+                      help="Use signal from bigwig rather than BAM"
+                      ", to use stranded sequence pass plus strand to this option"
+                      "and minus strand to --minus-bw")
+    parser.add_option("--minus-bw", dest="minus_wig", type="string",
+                      default=None,
+                      help="Use minus signal from this bigwig instead of BAM",
+                      "must pass plus signal to -w/--plus-bw")
     parser.add_option("--feature", dest="feature", type="choice",
                       choices=["transcript", "gene"],
                       default="gene",
@@ -97,7 +110,14 @@ def main(argv=None):
     else:
         pool = None
 
-    bam = pysam.AlignmentFile(options.bam)
+    if options.bedfile:
+        bam = iCLIP.make_getter(bedfile=options.bedfile)
+    elif options.plus_wig:
+        bam = iCLIP.make_getter(plus_wig=options.plus_wig,
+                                minus_wig=options.minus_wig)
+    else:
+        bam = pysam.AlignmentFile(options.bam)
+        
     fasta = IndexedFasta(options.fasta)
     fasta.setConverter(getConverter("zero-both-open"))
 
