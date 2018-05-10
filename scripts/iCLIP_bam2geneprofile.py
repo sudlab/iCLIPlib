@@ -100,7 +100,7 @@ def main(argv=None):
                       help="Use this to provide stranded wig data")
     parser.add_option("--bed", dest="bedfile", default=None,
                       help="Use bed file with signal instead of bam")
-    parser.add_option("--centre", dest="centre", action="store_true",
+    parser.add_option("--use-centre", dest="centre", action="store_true",
                       default=False,
                       help="Use centre of read rather than end")
     parser.add_option("--no-gene-norm", dest="row_norm", action="store_false",

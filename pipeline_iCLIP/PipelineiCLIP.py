@@ -4,6 +4,7 @@ import CGATPipelines.Pipeline as P
 import CGAT.FastaIterator as FastaIterator
 import CGAT.Experiment as E
 from CGATPipelines.Pipeline import cluster_runnable
+from CGATPipelines.PipelineMapping import SequenceCollectionProcessor
 import pandas
 import os
 import re
@@ -12,7 +13,32 @@ import pysam
 # The PARAMS dictionary must be provided by the importing
 # code
 
+class SemiProcessedCollector(SequenceCollectionProcessor):
+    '''This class takes local or remote, single ended files that have been
+    semi-processed, i.e. they have been filtered, trimmed and
+    demuxed. The UMI may not be in the expected place, but can be
+    moved using pre-processed patterns in the [preprocessed] section
+    of the ini
 
+    '''
+
+    def build(self, infiles, outfile):
+
+        cmd_preprocess, mapfiles = self.preprocess(infiles, outfile)
+        
+        statement = [cmd_preprocess]
+        assert len(mapfiles)==1
+        infile = mapfiles[0][0]
+        statement.append('''
+                zcat %(infile)s |
+                sed 's/ /_/g' |
+                sed -E 's/%%(preprocess_in_pattern)s/%%(preprocess_out_pattern)s/g;n;n;n' |
+                gzip > %(outfile)s;
+           ''' % locals())
+
+        return " checkpoint; ".join(statement)
+
+    
 def checkParams():
 
     if not len(PARAMS) > 0:
@@ -95,7 +121,7 @@ def callReproducibleClusters(infiles, outfile, min_overlap):
 
     merge_template = '''<( zcat %s
                           | sort -k1,1 -k2,2n
-                          | python bed2bed
+                          | cgat bed2bed
                           --method=merge
                           --merge-and-resolve-blocks
                           --merge-stranded

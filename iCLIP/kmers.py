@@ -37,14 +37,25 @@ def find_all_matches(sequence, regexes):
         positions matches for one regex. Index is the regex objects.
         
     '''
-        
+
+    sequence = sequence.upper()
     def _find_regex(regex):
         matches = regex.finditer(sequence)
         mStarts = [m.start() for m in matches]
         return np.asarray(mStarts)
 
-    return regexes.apply(_find_regex)
+    #return regexes.apply(_find_regex)
+    mstarts = collections.defaultdict(list)
 
+    kmer_len = len(regexes[0])
+    
+    for i in range(len(sequence)-kmer_len+1):
+        mstarts[sequence[i:i+kmer_len]].append(i)
+
+    
+    results =  pd.Series({k: np.asarray(v) for k, v in mstarts.iteritems()})
+
+    return results
 
 ##################################################
 def pentamer_frequency(profile, length, regex_matches, nSpread=15):
@@ -77,11 +88,15 @@ def pentamer_frequency(profile, length, regex_matches, nSpread=15):
         as `regex_matches`.
         
     '''
+
+    try:
+        kmer = len(regex_matches.index.values[0])
+    except IndexError:
+        return pd.Series()
     
-    kmer = len(regex_matches.index.values[0])
     profile = profile.reindex(
-        np.arange(-nSpread, length+nSpread-kmer), fill_value=0)
-    profile = spread(profile, nSpread, False, nSpread - kmer)
+        np.arange(-nSpread, length+nSpread), fill_value=0)
+    profile = spread(profile, nSpread, False)
     profile = profile.values
 
     def _count_regex(hits):
@@ -91,7 +106,9 @@ def pentamer_frequency(profile, length, regex_matches, nSpread=15):
         else:
             return 0
 
-    return regex_matches.map(_count_regex)
+    results = regex_matches.map(_count_regex)
+    results = results
+    return results
     
 
 ##################################################
@@ -184,7 +201,7 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
                                           columns=kmers)
 
     args = ((profile, sequence,
-             regexs, spread, randomisations)
+             kmers, spread, randomisations)
             for profile, sequence in
             _get_counts_and_sequence(gtf_chunk_iterator, bam, fasta))
 
@@ -195,11 +212,20 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
 
     for observed, rands in results_iterator:
 
-        observed_kmer_counts += observed
-        randomised_kmer_counts += rands
+        observed_kmer_counts = observed_kmer_counts.add(observed, fill_value=0)
+        randomised_kmer_counts = randomised_kmer_counts.add(rands, fill_value=0)
 
     randomised_kmer_counts = randomised_kmer_counts.transpose()
+    
+    #normalise for lost counts
+    observed_kmer_counts = observed_kmer_counts/observed_kmer_counts.sum()
+    randomised_kmer_counts = randomised_kmer_counts.div(randomised_kmer_counts.sum(axis=0), axis=1)
+
+  #  print randomised_kmer_counts.sum(axis=0).to_string()
+    # summary states
     means = randomised_kmer_counts.mean(axis=1)
+
+      
     sd = randomised_kmer_counts.std(axis=1)
 
     means.name = "mean"
@@ -207,6 +233,7 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
     observed_kmer_counts.name = "count"
 
     results = pd.concat([observed_kmer_counts, means, sd], axis=1)
+  
     return results.apply(lambda x: (x['count'] - x['mean'])/x['sd'], 1)
 
 
@@ -229,7 +256,9 @@ def _get_counts_and_sequence(gtf_iterator, bam, fasta,
             sequence = revcomp(sequence)
             
         exon_counts = count_transcript(transcript, bam)
-        yield (exon_counts, sequence)
+
+        if exon_counts.sum() > 0:
+            yield (exon_counts, sequence)
 
         # introns
         intron_intervals = GTF.toIntronIntervals(transcript)
@@ -246,7 +275,8 @@ def _get_counts_and_sequence(gtf_iterator, bam, fasta,
                 
             profile = intron_counts.loc[float(intron[0]):float(intron[1])]
             profile.index = profile.index - intron[0]
-            yield (profile, seq)
+            if profile.sum() > 0:
+                yield (profile, seq)
 
                 
 def _get_regex_frequencies(profile, sequence, regexs,
@@ -256,7 +286,8 @@ def _get_regex_frequencies(profile, sequence, regexs,
     parallelisation'''
 
     regex_matches = find_all_matches(sequence, regexs)
-    length = len(sequence)
+    length = len(sequence) 
+    
     boundaries = LiteExon(0, length)
     observed_kmer_counts = pentamer_frequency(profile,
                                               length,

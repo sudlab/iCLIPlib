@@ -128,14 +128,16 @@ def main(argv=None):
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
 
-    if options.proc:
+    if options.proc is not None:
         try:
             import multiprocessing
             pool = multiprocessing.Pool(options.proc)
+            E.debug("Operating in multiprocessing mode")
         except ImportError:
             E.warn("Failed to setup multiprocessing, using single processor")
             pool = None
     else:
+        E.debug("Operating in single processor mode")
         pool = None
 
     if options.feature == "gene":
@@ -160,9 +162,15 @@ def main(argv=None):
         iterator, bam, options.rands, options.spread, pool)
 
     results = results[results.fdr <= options.threshold]
-    results = results.sort_index()
     results = results.reset_index()
     results.columns = ["contig", "start", "FDR", "depth", "strand"]
+
+    # Deal with case where there is more than one value on a base. Keep one with
+    # lowest FDR.
+    results = results.sort_values(by=["FDR", "depth"], ascending=[True, False])
+    results = results.drop_duplicates(["contig", "start", "strand"])
+    results = results.sort_values(["contig", "start", "strand"])
+    
     results["start"] = results["start"].astype("int")
     results["end"] = results.start + 1
     results = results.loc[:, ["contig", "start", "end", "FDR", "depth", "strand"]]

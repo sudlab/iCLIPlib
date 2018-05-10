@@ -537,7 +537,10 @@ def spread(profile, bases, reindex=True, right_bases=None):
         end = int(profile.index.max() + window+1)
         profile = profile.reindex(np.arange(start, end), fill_value=0)
 
-    result = pd.rolling_sum(profile, window=window, center=False).dropna()
+    result = profile.rolling(window=window, center=False).sum().iloc[(window-1):]
+    #    print result
+    #    result =result.dropna()
+
     result.index = result.index - (right_bases + 1)
     return result
 

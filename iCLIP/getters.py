@@ -195,6 +195,11 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
 ##################################################    
 def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
     '''Get crosslink profiles from tabix indexed bedGraph/Bed'''
+
+    # check the file contains some data for the requested contig
+    if not contig in bedfile.contigs:
+        print "%s not in bedfile" % contig
+        return pd.Series(dict(), dtype=dtype)
     
     # fetch the rercords from the specificed region
     crosslinks = bedfile.fetch(contig, start, end, parser=pysam.asBed())
@@ -213,13 +218,13 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
             profile[float(base.start)] = int(base.score)
             check_sum += int(base.score)
 
-    try:
-        profile = pd.Series(profile, dtype=dtype)
-    except ValueError:
-        profile = pd.Series(dtype=dtype)
-        
-    if not check_sum == profile.sum():
-        raise OverflowError("Counts exceed specified dtype. Use bigger dtype")
+
+    profile = pd.Series(dict(profile), dtype=dtype)
+
+            
+    #if not check_sum == profile.sum():
+    #    raise OverflowError("Check sum failed (%i = %i). Possibly counts exceed specified dtype. Use bigger dtype"
+    #                        % (check_sum, profile.sum()))
 
     return profile
  

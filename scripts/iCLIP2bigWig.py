@@ -77,7 +77,7 @@ def outputToBW(infile, outfile_prefix, chrom_sizes):
         E.debug("Conversion successful")
         os.unlink(infile)
     
-def outputToBG(depths,chrom, bgfile):
+def outputToBG(depths,chrom, chrom_size, bgfile):
     '''depths is a pandas series keyed on chromosome position,
     chrom is a chromosome, wigfile is a file to output to.
     This function converts a series of depths into wig formated
@@ -86,8 +86,9 @@ def outputToBG(depths,chrom, bgfile):
     depths.index = depths.index
     for row in depths.iteritems():
         row = list(row)
-        if row[0] <= 0:
+        if row[0] <= 0 or row[0] >= chrom_size-1:
             continue
+        
         row = "\t".join(map(str,[chrom,
                                  int(row[0]),
                                  int(row[0])+1,
@@ -189,8 +190,8 @@ def main(argv=None):
         if options.format == "bed":
             output2Bed(pos_depth_sorted, neg_depth_sorted, chrom, bedfile)
         else:
-            outputToBG(pos_depth_sorted, chrom, plus_wig)
-            outputToBG(neg_depth_sorted, chrom, minus_wig)
+            outputToBG(pos_depth_sorted, chrom, chrom_length, plus_wig)
+            outputToBG(neg_depth_sorted, chrom, chrom_length, minus_wig)
     
         contig_sizes.append([chrom, chrom_length])
 

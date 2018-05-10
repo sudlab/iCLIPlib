@@ -328,10 +328,25 @@ def demux_fastq(infiles, outfiles):
 
     P.run()
 
+    
+###################################################################
+@follows(mkdir("demux_fq"))
+@transform("*.remote", formatter(),
+           "demux_fq/{basename[0]}.fastq.gz")
+def get_remote_reads(infile, outfile):
+    '''Get remote reads for reprocessing'''
+
+    m = PipelineiCLIP.SemiProcessedCollector()
+    statement = m.build((infile,), outfile)
+    P.run()
+
+
 
 ###################################################################
 @follows(mkdir("fastqc"))
-@transform(demux_fastq, regex(".+/(.+).fastq.gz"),
+@transform([demux_fastq,
+            get_remote_reads],
+           regex(".+/(.+).fastq.gz"),
            r"fastqc/\1.fastqc")
 def qcDemuxedReads(infile, outfile):
     ''' Run fastqc on the post demuxing and trimmed reads'''
@@ -367,6 +382,7 @@ def loadLengthDistribution(infiles, outfile):
                          options="-i start -i end")
 
 
+
 ###################################################################
 @follows(demux_fastq,qcDemuxedReads, loadUMIStats, loadSampleInfo,
          loadLengthDistribution)
@@ -393,8 +409,9 @@ def mapping_files():
 
 
 ###################################################################
-@follows(mkdir("mapping.dir"), demux_fastq)
-@transform(demux_fastq,
+@follows(mkdir("mapping.dir"), demux_fastq, get_remote_reads)
+@transform([demux_fastq,
+            get_remote_reads],
            regex(".+/(.+).fastq.gz"),
            r"mapping.dir/\1.bam")
 def run_mapping(infile, outfile):
@@ -983,7 +1000,7 @@ def callSignificantBases(infiles, outfile):
 
     bam, gtf = infiles
     job_threads = PARAMS["clusters_threads"]
-
+    job_memory="10G"
     if PARAMS["reads_use_centre"]==1:
         centre = "--centre"
     else:
@@ -1011,7 +1028,7 @@ def callSignificantBases(infiles, outfile):
 @transform(callSignificantBases,
            suffix("sig_bases.bed.gz"),
            "clusters.bed.gz")
-def callSignificantClusters(infile, outifle):
+def callSignificantClusters(infile, outfile):
     '''Join significant bases that are within in the cluster
     distance of each other, using the max score as the score for
     the cluster'''
@@ -1061,7 +1078,7 @@ def loadCrosslinkedBasesCount(infiles, outfile):
 
 ###################################################################
 @transform([callSignificantClusters, callReproducibleClusters],
-           suffix(".bed.gz"),
+           suffix(".clusters.bed.gz"),
            r".cluster_count")
 def countClusters(infile, outfile):
     '''Count the number of significant clusters'''
@@ -1075,7 +1092,7 @@ def countClusters(infile, outfile):
 def loadClusterCounts(infiles, outfile):
 
     P.concatenateAndLoad(infiles, outfile,
-                         regex_filename=".+/(.+).(R[0-9]+|reproducible).cluster_count",
+                         regex_filename=".+/(.+).(R[0-9]+|union|reproducible).cluster_count",
                          header="sample,replicate,count",
                          cat="sample,replicate",
                          has_titles=False)
@@ -1083,16 +1100,16 @@ def loadClusterCounts(infiles, outfile):
     
 ###################################################################
 @transform(callSignificantBases,
-           suffix(".bg.gz"),
+           suffix(".bed.gz"),
            add_inputs(generateContextBed),
            ".context_stats.tsv.gz")
 def getSigBaseContextStats(infiles, outfile):
     '''Generate context stats for significant bases'''
 
     bases, context = infiles
-    tmp = P.getTempFilename
+    tmp = P.getTempFilename()
 
-    statement =  '''  zcat %(clusters)s | sort -k1,1 -k2,2n > %(tmp)s.bed;
+    statement =  '''  zcat %(bases)s | sort -k1,1 -k2,2n > %(tmp)s.bed;
                      checkpoint;
                      cgat bam_vs_bed
                            -a %(tmp)s.bed
@@ -1105,7 +1122,7 @@ def getSigBaseContextStats(infiles, outfile):
     
 ###################################################################
 @transform([callSignificantClusters, callReproducibleClusters],
-           suffix(".bed.gz"),
+           suffix(".clusters.bed.gz"),
            add_inputs(generateContextBed),
            ".clusters.context_stats.tsv.gz")
 def getClusterContextStats(infiles, outfile):
@@ -1127,13 +1144,13 @@ def getClusterContextStats(infiles, outfile):
 
 ###################################################################
 @collate([getClusterContextStats, getSigBaseContextStats],
-         regex(".+/(.+).(bases|clusteres).context_stats.tsv.gz"),
+         regex(".+/(.+).(sig_bases|clusters).context_stats.tsv.gz"),
          r"clusters.dir/\2_context_stats.load")
 def loadClusterContextStats(infiles, outfile):
 
     P.concatenateAndLoad(infiles, outfile,
                          regex_filename=
-                         "clusters.dir/(.+).context_stats.tsv.gz")
+                         "clusters.dir/(.+)(?:sig_bases|clusters).context_stats.tsv.gz")
 
 
 ###################################################################
@@ -1149,7 +1166,7 @@ def clusters():
 # Motifs
 ###################################################################
 @follows(mkdir("kmers.dir"))
-@transform([dedup_alignments,
+@subdivide([dedup_alignments,
             get_union_bams,
             callSignificantBases],
            regex(".+/(.+)(.bam|.bed.gz)"),
@@ -1158,7 +1175,7 @@ def clusters():
                       os.path.join(PARAMS["genome_dir"],
                                    PARAMS["genome"])),
            [r"kmers.dir/\1.%smers.tsv.gz" % kmer
-            for kmer in PARAMS["kmer_lengths"].split(",")])
+            for kmer in str(PARAMS["kmer_lengths"]).split(",")])
 def get_kmer_enrichments(infiles, outfiles):
     ''' Look for enrichment of kmers in crosslinked bases. Will
     examine both significant bases and all bases and look for 
@@ -1168,13 +1185,15 @@ def get_kmer_enrichments(infiles, outfiles):
 
     if bamfile.endswith(".bam"):
         sites = "-b " + bamfile
-    elif bamfile.endswith(".bg.gz"):
+    elif bamfile.endswith(".bed.gz"):
         sites = "--bed=" + bamfile
 
     if PARAMS["reads_use_centre"]==1:
-        centre="--use_centre"
+        centre="--use-centre"
     else:
         centre=""
+
+    job_threads=PARAMS["kmer_threads"]
         
     statement_template = '''python %%(project_src)s/scripts/iCLIP_kmer_enrichment.py
                                     %(sites)s
@@ -1189,7 +1208,7 @@ def get_kmer_enrichments(infiles, outfiles):
 
     statements = []
     
-    for outfile, kmer in zip(outfiles, PARAMS["kmer_lengths"].split(",")):
+    for outfile, kmer in zip(outfiles, str(PARAMS["kmer_lengths"]).split(",")):
         statements.append(statement_template % locals())
 
     P.run()
@@ -1197,26 +1216,26 @@ def get_kmer_enrichments(infiles, outfiles):
 
 ###################################################################
 @collate(get_kmer_enrichments,
-         formatter("[^\.]+\.[0-9]+mer.tsv.gz"),
+         regex("(.+-.+)-(.+)\.[0-9]+mers.tsv.gz"),
          "kmers.dir/all_bases.kmers.load")
 def load_dedup_kmers(infiles, outfile):
 
     P.concatenateAndLoad(infiles, outfile,
-                         regex_filename="(.+)-(.+)[-\.](R.+|union)\.([0-9]+mer).tsv.gz",
+                         regex_filename="kmers.dir/(.+)-(.+)-(.+)\.([0-9]+mers).tsv.gz",
                          cat="factor,tag,replicate,k",
-                         options="-i factor -i tag -i replicate -i k -kmer")
+                         options="-i factor -i tag -i replicate -i kmer")
 
 
 ###################################################################   
 @collate(get_kmer_enrichments,
-         formatter("[^\.]+\.sig_bases.[0-9]+mer.tsv.gz"),
-         "kmers.dir/all_bases.kmers.load")
+         regex(".+/[^\.]+\.sig_bases.[0-9]+mers.tsv.gz"),
+         "kmers.dir/sig_bases.kmers.load")
 def load_sig_base_kmers(infiles, outfile):
 
     P.concatenateAndLoad(infiles, outfile,
-                         regex_filename="(.+)-(.+)[-\.](R.+|union)\.([0-9]+mer).tsv.gz",
+                         regex_filename="kmers.dir/(.+)-(.+)-(.+)\.sig_bases.([0-9]+mers).tsv.gz",
                          cat="factor,tag,replicate,k",
-                         options="-i factor -i tag -i replicate -i k -kmer")
+                         options="-i factor -i tag -i replicate -i kmer")
 
     
 ###################################################################

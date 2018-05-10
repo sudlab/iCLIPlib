@@ -78,7 +78,7 @@ def main(argv=None):
     parser.add_option("-p", "--processes", dest="proc", type="int",
                       default=None,
                       help="Use this many processesors for multiprocessing")
-    parser.add_option("-b", "--bed", dest="bedfile", type="string",
+    parser.add_option("--bed", dest="bedfile", type="string",
                       default=None,
                       help="Use signal from bedfile rather than BAM. File must"
                       "be compressed with bgzip and indexed with tabix")
@@ -89,13 +89,17 @@ def main(argv=None):
                       "and minus strand to --minus-bw")
     parser.add_option("--minus-bw", dest="minus_wig", type="string",
                       default=None,
-                      help="Use minus signal from this bigwig instead of BAM",
+                      help="Use minus signal from this bigwig instead of BAM"
                       "must pass plus signal to -w/--plus-bw")
     parser.add_option("--feature", dest="feature", type="choice",
                       choices=["transcript", "gene"],
                       default="gene",
                       help="Treat transcripts seperately or merge genes")
+    parser.add_option("--use-centre", dest="centre", action="store_true",
+                      default=False,
+                      help="Use centre of read for XL location")
 
+    
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
 
@@ -116,7 +120,8 @@ def main(argv=None):
         bam = iCLIP.make_getter(plus_wig=options.plus_wig,
                                 minus_wig=options.minus_wig)
     else:
-        bam = pysam.AlignmentFile(options.bam)
+        bam = iCLIP.make_getter(bamfile=pysam.AlignmentFile(options.bam),
+                                centre=options.centre)
         
     fasta = IndexedFasta(options.fasta)
     fasta.setConverter(getConverter("zero-both-open"))

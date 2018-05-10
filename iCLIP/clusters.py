@@ -110,7 +110,7 @@ def _get_fdr_for_transcript(profile, exon, nspread, randomizations,
     fdrs = pd.concat([fdrs, profile], axis=1)
     fdrs.fdr = fdrs.fdr.fillna(1)
     fdrs.Depth = fdrs.Depth.fillna(0)
-    fdrs.strand = strand
+    fdrs["strand"] = strand
     fdrs.index = pd.MultiIndex.from_tuples(
         [(contig, x) for x in converter.transcript2genome(fdrs.index.values)])
     return fdrs
