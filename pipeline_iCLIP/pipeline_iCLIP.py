@@ -909,7 +909,7 @@ def loadCounts(infiles, outfile):
            regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
-           r"gene_profiles.dir/\1.exons.tsv")
+           r"gene_profiles.dir/\1.exons.tsv.gz")
 def calculateGeneExonProfiles(infiles, outfile):
     ''' Calculate metagene profiles over protein coding genes
     for each sample'''
@@ -940,7 +940,7 @@ def calculateGeneExonProfiles(infiles, outfile):
            regex(".+/(.+).bed.gz"),
            add_inputs(os.path.join(PARAMS["annotations_dir"],
                                    PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
-           r"gene_profiles.dir/\1.introns.tsv")
+           r"gene_profiles.dir/\1.introns.tsv.gz")
 def calculateGeneIntronProfiles(infiles, outfile):
     '''Get a metagene profile over concatenated introns'''
 
@@ -962,7 +962,7 @@ def calculateGeneIntronProfiles(infiles, outfile):
                    %(use_centre)s
                    --exon-bins=100
                    -S %(outfile)s
-                   -L %(outfile)s; '''
+                   -L %(outfile)s.log; '''
 
     P.run()
 
@@ -975,8 +975,8 @@ def loadGeneProfiles(infiles, outfile):
 
     P.concatenateAndLoad(infiles, outfile,
                           regex_filename='.+/(.+)\-(.+)\-(.+)\.(.+).tsv.gz',
-                          cat = "factor,condition,rep,",
-                          options = "-i factor -i condition -i rep")
+                          cat = "factor,condition,rep,interval",
+                          options = "-i factor -i condition -i rep -i interval")
 
 
 ###################################################################
