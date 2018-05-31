@@ -150,6 +150,9 @@ def main(argv=None):
     parser.add_option("--dtype", dest = "dtype", type="string",
                       default="uint32",
                       help="dtype for storing depths")
+    parser.add_option("-m", "--mnetseq", dest="mnetseq", action="store_true",
+                      default=False,
+                      help="use 3' end of read for SNR")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -173,13 +176,16 @@ def main(argv=None):
 
     contig_sizes = []
 
+ 
     for chrom, chrom_length in zip(in_bam.references, in_bam.lengths):
 
         # get depths over chromosome
         pos_depth, neg_depth, counter = iCLIP.countChr(in_bam.fetch(chrom),
                                                        chrom_length,
                                                        options.dtype,
-                                                       centre=options.centre)
+                                                       centre=options.centre,
+                                                       read_end=options.mnetseq,
+                                                       use_deletions=not options.mnetseq)
         pos_depth_sorted = pos_depth.sort_index()
         del pos_depth
         neg_depth_sorted = neg_depth.sort_index()
