@@ -471,8 +471,7 @@ def indexMergedBAMs(infile, outfile):
 
 ###################################################################
 
-@transform(os.path.join(PARAMS["annotations_dir"],
-                        PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
+@transform(PARAMS["annotations_geneset"],
            regex(".+/(.+).gtf.gz"),
            r"\1.context.bed.gz")
 def generateContextBed(infile, outfile):
@@ -584,6 +583,7 @@ def get_union_bams(infiles, outfile):
 
     if len(infiles) == 1:
         infile = infiles[0]
+        infile = os.path.abspath(infile)
         statement = ''' ln -sf %(infile)s %(outfile)s;
                         checkpoint;
                         ln -sf %(infile)s.bai %(outfile)s.bai; '''
@@ -871,8 +871,7 @@ def reproducibility():
 @follows(mkdir("counts.dir"))
 @transform(get_indexed_bed,
            regex(".+/(.+).bed.gz"),
-           add_inputs(os.path.join(PARAMS["annotations_dir"],
-                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
+           add_inputs(PARAMS["annotations_geneset"]),
            r"counts.dir/\1.tsv.gz")
 def countReadsOverGenes(infiles, outfile):
     ''' use feature counts to quantify the number of tags on each gene'''
@@ -907,8 +906,7 @@ def loadCounts(infiles, outfile):
 @follows(mkdir("gene_profiles.dir"))
 @transform(get_indexed_bed,
            regex(".+/(.+).bed.gz"),
-           add_inputs(os.path.join(PARAMS["annotations_dir"],
-                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
+           add_inputs(PARAMS["annotations_geneset"]),
            r"gene_profiles.dir/\1.exons.tsv.gz")
 def calculateGeneExonProfiles(infiles, outfile):
     ''' Calculate metagene profiles over protein coding genes
@@ -938,8 +936,7 @@ def calculateGeneExonProfiles(infiles, outfile):
 ###################################################################
 @transform(get_indexed_bed,
            regex(".+/(.+).bed.gz"),
-           add_inputs(os.path.join(PARAMS["annotations_dir"],
-                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
+           add_inputs(PARAMS["annotations_geneset"]),
            r"gene_profiles.dir/\1.introns.tsv.gz")
 def calculateGeneIntronProfiles(infiles, outfile):
     '''Get a metagene profile over concatenated introns'''
@@ -991,8 +988,7 @@ def profiles():
 @follows(mkdir("clusters.dir"))
 @transform(get_indexed_bed,
            regex(".+/(.+).bed.gz"),
-           add_inputs(os.path.join(PARAMS["annotations_dir"],
-                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"])),
+           add_inputs(PARAMS["annotations_geneset"]),
            r"clusters.dir/\1.sig_bases.bed.gz")
 def callSignificantBases(infiles, outfile):
     '''Call bases as significant based on mapping depth in window
@@ -1170,8 +1166,7 @@ def clusters():
             get_union_bams,
             callSignificantBases],
            regex(".+/(.+)(.bam|.bed.gz)"),
-           add_inputs(os.path.join(PARAMS["annotations_dir"],
-                                   PARAMS_ANNOTATIONS["interface_geneset_all_gtf"]),
+           add_inputs(PARAMS["annotations_geneset"],
                       os.path.join(PARAMS["genome_dir"],
                                    PARAMS["genome"])),
            [r"kmers.dir/\1.%smers.tsv.gz" % kmer
