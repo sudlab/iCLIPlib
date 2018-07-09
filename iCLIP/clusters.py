@@ -61,14 +61,18 @@ def fdr(profile, exon, nspread, randomizations):
 def _get_profiles_and_conveter(gtf_iterator, bam):
 
     for transcript in gtf_iterator:
+
+        transcript = [e for e in transcript if hasattr(e, "transcript_id")]
+        if len(transcript) == 0:
+            continue
         
         gene_id = transcript[0].gene_id
-        transcript_id = transcript[0].transcript_id
+        #transcript_id = transcript[0].transcript_id
         contig = transcript[0].contig
         strand = transcript[0].strand
          
-        E.debug("Crunching gene: %s, transcript: %s"
-                % (gene_id, transcript_id))
+        E.debug("Crunching gene: %s:"
+                % gene_id)
          
         # exons
         profile = count_transcript(transcript, bam)
@@ -155,8 +159,10 @@ def get_crosslink_fdr_by_randomisation(gtf_iterator, bam,
     else:
         results = (_get_fdr_for_transcript(*arg) for arg in args)
 
+    results = list(results)
+    
     results = pd.concat(results)
-
+        
     return results
 
     

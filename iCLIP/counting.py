@@ -154,9 +154,15 @@ def count_transcript(transcript, bam, flanks=0):
     exons = GTF.asRanges(transcript, "exon")
 
     if len(exons)==0:
-        print "transcript:"
-        print "\n".join(str(e) for e in transcript)
-        
+        if flanks==0:
+            return pandas.Series()
+        else:
+            return pandas.Series(index=pandas.MultiIndex(
+                levels=[["flank5", "exon", "flank3"],
+                        []],
+                labels=[[], []],
+                names=["region", "base"]))
+
     counts = count_intervals(bam, exons,
                              contig=transcript[0].contig,
                              strand=transcript[0].strand)
