@@ -192,3 +192,15 @@ def exons(transcript):
 
     e = [e for e in transcript if e.feature == "exon"]
     return (e)
+
+def primary_transcript(transcript):
+
+    ex = exons(transcript)
+
+    transcript = ex[0]
+    transcript.start = min([e.start for e in ex])
+    transcript.end = max(e.end for e in ex)
+
+    return [transcript]
+
+    

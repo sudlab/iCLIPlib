@@ -70,7 +70,8 @@ regions_dict = {'5flank': transcript_regions.flank5,
                 'middle_exons' : transcript_regions.middle_exons,
                 'last_exon' : transcript_regions.last_exon,
                 'exons' : transcript_regions.exons,
-                'introns' : transcript_regions.introns}
+                'introns' : transcript_regions.introns,
+                'primary' : transcript_regions.primary_transcript}
 
 default_bins = {'5flank': 50,
                 '3flank': 50,
@@ -81,7 +82,8 @@ default_bins = {'5flank': 50,
                 'middle_exons' : 100,
                 'last_exon' : 70,
                 'exons' : 100, 
-                'introns' : 100}
+                'introns' : 100,
+                'primary' : 100}
 
 def main(argv=None):
     """script main.
