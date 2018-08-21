@@ -204,3 +204,37 @@ def primary_transcript(transcript):
     return [transcript]
 
     
+def tss(transcript, upstream=500, downstream=500):
+
+    exons = [e for e in transcript if e.feature == "exon"]
+    
+    if exons[0].strand == "-":
+        start = max(x.end for x in exons) - downstream
+        end = start + upstream + downstream
+    else: 
+        end = min(x.start for x in exons) + downstream
+        start = end - upstream - downstream
+
+    returned_exon = GTF.Entry().fromGTF(exons[0])
+    returned_exon.start = start
+    returned_exon.end = end
+    
+    return [returned_exon]
+
+
+def tts(transcript, upstream=500, downstream=500):
+
+    exons = [e for e in transcript if e.feature == "exon"]
+     
+    if exons[0].strand == "+":
+        start = max(x.end for x in exons) + downstream
+        end = start - upstream - downstream
+    else: 
+        end = min(x.start for x in exons) - downstream
+        start = end + upstream + downstream
+
+    returned_exon = GTF.Entry().fromGTF(exons[0])
+    returned_exon.start = start
+    returned_exon.end = end
+    
+    return [returned_exon]
