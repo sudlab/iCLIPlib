@@ -202,6 +202,29 @@ def connect():
 ###################################################################
 # worker tasks
 ###################################################################
+@transform(os.path.join(PARAMS["genome_dir"],
+                        PARAMS["genome"]),
+           formatter(),
+           "contigs.tsv")
+def getContigSizes(infile, outfile):
+
+    from CGAT import IndexedFasta
+    
+    try:
+        prefix = P.snip(infile, ".fasta")
+    except ValueError:
+        prefix = P.snip(infile, ".fa")
+        
+    fasta = IndexedFasta.IndexedFasta(prefix)
+    outs = IOTools.openFile(outfile, "w")
+
+    for contig, size in fasta.getContigSizes(with_synonyms=False).items():
+        outs.write("%s\t%i\n" % (contig, size))
+
+    outs.close()
+
+
+    
 @transform("*.fastq.gz", regex("(.+).fastq.gz"),
            add_inputs(os.path.join(PARAMS["bowtie_index_dir"],
                                    PARAMS["phix_genome"]+".fa")),
@@ -256,7 +279,7 @@ def extractUMI(infile, outfile):
 
 ###################################################################
 @transform(extractUMI, suffix(".fastq.umi_trimmed.gz"),
-           "umi_stats.load")
+           ".umi_stats.load")
 def loadUMIStats(infile, outfile):
     ''' load stats on UMI usage from the extract_umi log into the
     database '''
@@ -304,7 +327,7 @@ def demux_fastq(infiles, outfiles):
     
     statement = '''reaper -geom 5p-bc
                           -meta %(meta)s
-                          -i <( zcat %(infile)s | sed 's/ /_/g')
+                          -i %(infile)s
                           --noqc
                           %(reads_reaper_options)s
                           -basename demux_fq/%(track)s_
@@ -472,14 +495,15 @@ def indexMergedBAMs(infile, outfile):
 ###################################################################
 
 @transform(PARAMS["annotations_geneset"],
-           regex(".+/(.+).gtf.gz"),
+           regex("(?:.+/)?([^/]+).gtf.gz"),
+           add_inputs(getContigSizes),
            r"\1.context.bed.gz")
-def generateContextBed(infile, outfile):
+def generateContextBed(infiles, outfile):
     ''' Generate full length primary transcript annotations to count
     mapping contexts '''
 
-    genome = os.path.join(PARAMS["annotations_dir"],
-                          PARAMS_ANNOTATIONS["interface_contigs"])
+    infile, genome = infiles
+    
     statement = ''' zcat %(infile)s
                   | awk '$3=="exon"'
                   | cgat gtf2gtf
@@ -612,7 +636,7 @@ def get_indexed_bed(infile, outfile):
 
                      checkpoint;
 
-                     bgzip %(outfile)s
+                     bgzip -f %(outfile)s
 
                     checkpoint;
 
@@ -1346,11 +1370,13 @@ def generateBigWigUCSCFile(infiles, outfile):
 @follows(mkdir("export/hg19"))
 @transform([callSignificantClusters, callReproducibleClusters],
            regex("clusters.dir/(.+).bed.gz"),
+           add_inputs(getContigSizes),
            r"export/hg19/\1.bigBed")
-def exportClusters(infile, outfile):
+def exportClusters(infiles, outfile):
     ''' Add a track line to cluster files and export to export dir '''
-   
-    PipelineiCLIP.clustersToBigBed(infile, outfile)
+
+    infile, genome = infiles
+    PipelineiCLIP.clustersToBigBed(infile, genome, outfile)
 
 
 ###################################################################
