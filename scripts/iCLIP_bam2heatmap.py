@@ -195,6 +195,8 @@ def main(argv=None):
                       help="Use this wig for plus strand info rather than bam file")
     parser.add_option("--minus-wig", dest="minus_wig", type="string",
                       help="Use this wig for minus strand info rather than bam file")
+    parser.add_option("--bed", dest="bed", type="string",
+                      help="Use this bed for signal(must be indexed)")
     parser.add_option("--norm-mat", dest="norm_mat", type="string",
                       help="Use this matrix for normalizing (e.g. RNA data")
 
@@ -256,6 +258,8 @@ def main(argv=None):
     if options.plus_wig:
         getter = iCLIP.make_getter(plus_wig=options.plus_wig,
                                    minus_wig=options.minus_wig)
+    elif options.bed:
+        getter = iCLIP.make_getter(bedfile=options.bed)
     else:
         try:
             getter = iCLIP.make_getter(bamfile=args[0])
