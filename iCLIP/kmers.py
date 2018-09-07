@@ -207,6 +207,8 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
 
     if pool:
         results_iterator = pool.imap_unordered(_par_call, args)
+     
+        
     else:
         results_iterator = (_get_regex_frequencies(*arg) for arg in args)
 
@@ -215,6 +217,10 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
         observed_kmer_counts = observed_kmer_counts.add(observed, fill_value=0)
         randomised_kmer_counts = randomised_kmer_counts.add(rands, fill_value=0)
 
+    if pool:
+        pool.close()
+        pool.join()
+        
     randomised_kmer_counts = randomised_kmer_counts.transpose()
     
     #normalise for lost counts
@@ -245,13 +251,20 @@ def _get_counts_and_sequence(gtf_iterator, bam, fasta,
 
     for transcript in gtf_iterator:
 
-        E.debug("Counting transcript %s" % transcript[0].transcript_id)
+        transcript = [e for e in transcript if hasattr(e, "transcript_id")]
+        if len(transcript)==0:
+            continue
+        
+        
         contig, strand = transcript[0].contig, transcript[0].strand
 
         # exons
         exons = GTF.asRanges(transcript, "exon")
-        sequence = "".join(fasta.getSequence(contig, "+", exon[0], exon[1])
-                           for exon in exons)
+        try:
+            sequence = "".join(fasta.getSequence(contig, "+", exon[0], exon[1])
+                               for exon in exons)
+        except KeyError:
+            continue
         if strand == "-":
             sequence = revcomp(sequence)
             

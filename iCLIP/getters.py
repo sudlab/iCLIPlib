@@ -198,7 +198,7 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
 
     # check the file contains some data for the requested contig
     if not contig in bedfile.contigs:
-        print "%s not in bedfile" % contig
+        #print "%s not in bedfile" % contig
         return pd.Series(dict(), dtype=dtype)
     
     # fetch the rercords from the specificed region

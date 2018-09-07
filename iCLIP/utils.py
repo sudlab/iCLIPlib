@@ -115,8 +115,11 @@ class TranscriptCoordInterconverter:
         self.strand = transcript[0].strand
 
         # store transcript_id
-        self.transcript_id = transcript[0].transcript_id
-
+        try:
+            self.transcript_id = transcript[0].transcript_id
+        except AttributeError:
+            self.transcript_id = transcript[0].gene_id
+            
         # sort the exons into "transcript" order
         if self.strand == "-":
             intervals.sort(reverse=True)

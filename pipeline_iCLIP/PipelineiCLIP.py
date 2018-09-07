@@ -155,14 +155,13 @@ def removeInputOverlappingClusters(sample, control, outfile):
 
 
 ###################################################################
-def clustersToBigBed(infile, outfile):
+def clustersToBigBed(infile, genome_file, outfile):
     '''Convert beds to bigbed '''
 
     checkParams()
 
     tmp = P.getTempFilename()
-    genome_file = os.path.join(PARAMS["annotations_dir"],
-                               PARAMS_ANNOTATIONS["interface_contigs_tsv"])
+
     statement = ''' zcat %(infile)s | sort -k1,1 -k2,2n 
                     | awk 'BEGIN{OFS="\\t"} $5=1' > %(tmp)s;
                     checkpoint;

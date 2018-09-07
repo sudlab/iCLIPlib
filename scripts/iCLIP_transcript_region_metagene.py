@@ -70,7 +70,10 @@ regions_dict = {'5flank': transcript_regions.flank5,
                 'middle_exons' : transcript_regions.middle_exons,
                 'last_exon' : transcript_regions.last_exon,
                 'exons' : transcript_regions.exons,
-                'introns' : transcript_regions.introns}
+                'introns' : transcript_regions.introns,
+                'primary' : transcript_regions.primary_transcript,
+                'tss': transcript_regions.tss,
+                'tts' : transcript_regions.tts}
 
 default_bins = {'5flank': 50,
                 '3flank': 50,
@@ -81,7 +84,10 @@ default_bins = {'5flank': 50,
                 'middle_exons' : 100,
                 'last_exon' : 70,
                 'exons' : 100, 
-                'introns' : 100}
+                'introns' : 100,
+                'primary' : 100,
+                'tss' : 100,
+                'tts' : 100}
 
 def main(argv=None):
     """script main.
@@ -135,8 +141,6 @@ def main(argv=None):
                       help="Bins to use. If not specified defaults for the"
                       "chosen regions will be used")
     
-    
-    
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
 
@@ -148,45 +152,55 @@ def main(argv=None):
     else:
         bam = iCLIP.make_getter(bamfile=args[0], centre=options.centre)
 
-    regions_dict['5flank'] = partial(regions_dict['5flank'], length=options.flanks)
-    regions_dict['3flank'] = partial(regions_dict['3flank'], length=options.flanks)
+    regions_dict['5flank'] = partial(regions_dict['5flank'],
+                                     length=options.flanks)
+    regions_dict['3flank'] = partial(regions_dict['3flank'],
+                                     length=options.flanks)
+    regions_dict['tss'] = partial(regions_dict['tss'],
+                                  upstream=options.flanks,
+                                  downstream=options.flanks)
+    regions_dict['tts'] = partial(regions_dict['tts'],
+                                  upstream=options.flanks,
+                                  downstream=options.flanks)
 
     names = options.regions.split(",")
     regions = [regions_dict[r] for r in names]
-    
+
     if options.bins:
         bins = [int(b) for b in options.bins.split(",")]
         if not len(bins) == len(regions):
             raise ValueError("Bins and regions not same length")
     else:
         bins = [default_bins[r] for r in names]
-        
-    index = [list(product([n], range(b))) for n,b in zip(names, bins)]
+
+    index = [list(product([n], range(b))) for n, b in zip(names, bins)]
     index = sum(index, [])
-    index = pandas.MultiIndex.from_tuples(index, names=["region", "region_bin"])
-    
+    index = pandas.MultiIndex.from_tuples(index,
+                                          names=["region", "region_bin"])
+
     profile = pandas.Series(
         index=index)
     accumulator = list()
-    
+
     transcript_interator = GTF.transcript_iterator(GTF.iterator(options.stdin))
 
     for transcript in transcript_interator:
-        this_profile = transcript_region_meta(transcript, bam, regions, names, bins,
-                                              length_norm=options.rlc)
+        this_profile = transcript_region_meta(transcript, bam, regions, names,
+                                              bins, length_norm=options.rlc)
 
         if options.pseudo_count:
-            this_profile = profile.reindex(index, fill_value=0) + pseudo_count
+            this_profile = profile.reindex(index, fill_value=0) +\
+                           options.pseudo_count
 
         if options.row_norm:
             this_profile = this_profile/this_profile.sum()
-    
+
         profile = profile.add(this_profile, fill_value=0)
 
         if options.matrix:
             profile.name = transcript[0].transcript_id
             accumulator.append(profile)
-        
+
     if options.normalize_profile:
         profile = profile/profile.sum()
 
@@ -194,11 +208,11 @@ def main(argv=None):
     profile.name = "density"
     profile = profile.reset_index()
     profile.index.name = "bin"
-    
-    profile.to_csv(options.stdout, sep = "\t", index_label="bin")
-    
+
+    profile.to_csv(options.stdout, sep="\t", index_label="bin")
+
     if options.matrix:
-        matrix = pandas.concat(accumulator, axis=1)
+        counts_matrix = pandas.concat(accumulator, axis=1)
         counts_matrix = counts_matrix.transpose()
 
         counts_matrix = counts_matrix.reset_index(drop=True)

@@ -34,7 +34,7 @@ def flank5(transcript, length=500):
     return [returned_exon]
 
 
-def flank3(transcript, length):
+def flank3(transcript, length=500):
     
     exons = [e for e in transcript if e.feature == "exon"]
     
@@ -192,3 +192,49 @@ def exons(transcript):
 
     e = [e for e in transcript if e.feature == "exon"]
     return (e)
+
+def primary_transcript(transcript):
+
+    ex = exons(transcript)
+
+    transcript = ex[0]
+    transcript.start = min([e.start for e in ex])
+    transcript.end = max(e.end for e in ex)
+
+    return [transcript]
+
+    
+def tss(transcript, upstream=500, downstream=500):
+
+    exons = [e for e in transcript if e.feature == "exon"]
+    
+    if exons[0].strand == "-":
+        start = max(x.end for x in exons) - downstream
+        end = start + upstream + downstream
+    else: 
+        end = min(x.start for x in exons) + downstream
+        start = end - upstream - downstream
+
+    returned_exon = GTF.Entry().fromGTF(exons[0])
+    returned_exon.start = start
+    returned_exon.end = end
+    
+    return [returned_exon]
+
+
+def tts(transcript, upstream=500, downstream=500):
+
+    exons = [e for e in transcript if e.feature == "exon"]
+     
+    if exons[0].strand == "+":
+        start = max(x.end for x in exons) - upstream
+        end = start + upstream + downstream
+    else: 
+        end = min(x.start for x in exons) + upstream
+        start = end - upstream - downstream
+
+    returned_exon = GTF.Entry().fromGTF(exons[0])
+    returned_exon.start = start
+    returned_exon.end = end
+    
+    return [returned_exon]
