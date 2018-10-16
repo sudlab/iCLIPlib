@@ -193,7 +193,7 @@ def count_transcript(transcript, bam, flanks=0):
 
         E.debug("Counting 5 flank: (%i, %i)" % (transcript_min - flanks,
                                                 transcript_min))
-        flank5_counts = count_intervals(bam, [(transcript_min - flanks,
+        flank5_counts = count_intervals(bam, [(max(transcript_min - flanks,0),
                                               transcript_min)],
                                         contig=transcript[0].contig,
                                         strand=transcript[0].strand)

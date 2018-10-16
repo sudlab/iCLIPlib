@@ -199,6 +199,7 @@ def main(argv=None):
 
     contig_sizes = []
 
+ 
     for chrom, chrom_length in zip(in_bam.references, in_bam.lengths):
 
         # get depths over chromosome
