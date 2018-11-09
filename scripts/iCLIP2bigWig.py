@@ -158,9 +158,9 @@ def main(argv=None):
     parser.add_option("--dtype", dest = "dtype", type="string",
                       default="uint32",
                       help="dtype for storing depths")
-    parser.add_option("-m", "--mnetseq", dest="mnetseq", action="store_true",
+    parser.add_option("--cpm", dest="cpm", action="store_true",
                       default=False,
-                      help="use 3' end of read for SNR")
+                      help="Normalize output depths to number of mapped reads (in millions) in BAM")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -186,7 +186,11 @@ def main(argv=None):
                                   
 
     getter = iCLIP.make_getter(in_bam, profile=profile, centre=centre)
-    
+
+    if options.cpm:
+        scale_factor = sum(contig.mapped for contig in in_bam.get_index_statistics())
+        scale_factor = 100000000.0/scale_factor
+
     if options.format == "bed":
         bedfile = IOTools.openFile(args[0], "w")
     else:
@@ -205,6 +209,10 @@ def main(argv=None):
         neg_depth_sorted = neg_depth.sort_index()
         del neg_depth
         neg_depth_sorted = -1*neg_depth_sorted
+ 
+        if options.cpm:
+            pos_depth_sorted = pos_depth_sorted * scale_factor
+            neg_depth_sorted = neg_depth_sorted * scale_factor
 
         # output to temporary wig file
         if options.format == "bed":
@@ -217,7 +225,7 @@ def main(argv=None):
 
         del pos_depth_sorted
         del neg_depth_sorted
- 
+
     if options.format == "bed":
         bedfile.close()
     else:
