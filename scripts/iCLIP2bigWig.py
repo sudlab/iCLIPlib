@@ -1,4 +1,4 @@
-'''
+				'''
 iCLIP2bigWig -- convert iCLIP BAM files to two wig files
 ============================================================
 
@@ -189,7 +189,8 @@ def main(argv=None):
 
     if options.cpm:
         scale_factor = sum(contig.mapped for contig in in_bam.get_index_statistics())
-        scale_factor = 100000000.0/scale_factor
+
+        scale_factor = 1000000.0/scale_factor
 
     if options.format == "bed":
         bedfile = IOTools.openFile(args[0], "w")
@@ -214,6 +215,10 @@ def main(argv=None):
             pos_depth_sorted = pos_depth_sorted * scale_factor
             neg_depth_sorted = neg_depth_sorted * scale_factor
 
+        if options.cpm:
+            pos_depth = pos_depth * scale_factor
+            neg_depth = neg_depth * scale_factor
+            
         # output to temporary wig file
         if options.format == "bed":
             output2Bed(pos_depth_sorted, neg_depth_sorted, chrom, bedfile)

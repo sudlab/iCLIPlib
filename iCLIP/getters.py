@@ -231,9 +231,9 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
         return pd.Series()
 
     if filter_end == "read1":
-        reads = (r for r in reads if r.is_read1)
+        reads = (r for r in reads if not r.is_read2)
     elif filter_end == "read2":
-        reads = (r for r in reads if r.is_read2)
+        reads = (r for r in reads if not r.is_read1)
         
     counts = countChr(reads, chr_len, dtype, centre, read_end, use_deletions,
                       offset)
