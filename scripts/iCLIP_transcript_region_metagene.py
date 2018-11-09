@@ -75,19 +75,19 @@ regions_dict = {'5flank': transcript_regions.flank5,
                 'tss': transcript_regions.tss,
                 'tts': transcript_regions.tts}
 
-default_bins = {'5flank': 50,
-                '3flank': 50,
+default_bins = {'5flank': 100,
+                '3flank': 100,
                 '5UTR': 20,
                 '3UTR': 70,
                 'CDS': 100,
                 'first_exon': 20, 
                 'middle_exons': 100,
                 'last_exon': 70,
-                'exons': 100, 
+                'exons': 200, 
                 'introns': 100,
                 'primary': 100,
-                'tss': 100,
-                'tts': 1000}
+                'tss': 200,
+                'tts': 100}
 
 def main(argv=None):
     """script main.
@@ -105,7 +105,10 @@ def main(argv=None):
                       default=None,
                       help="output full matrix to this file")
     parser.add_option("-f", "--flanks-length", dest="flanks", type="int",
-                      default=100,
+                      default=1000,
+                      help="number of basepairs to use for gene flanks")
+    parser.add_option("-u", "--upstreamflanks-length", dest="tssupflanks", type="int",
+                      default=1000,
                       help="number of basepairs to use for gene flanks")
     parser.add_option("--pseudo_count", dest="pseudo_count", type="float",
                       default=0,
@@ -161,7 +164,7 @@ def main(argv=None):
     regions_dict['3flank'] = partial(regions_dict['3flank'],
                                      length=options.flanks)
     regions_dict['tss'] = partial(regions_dict['tss'],
-                                  upstream=options.flanks,
+                                  upstream=options.tssupflanks,
                                   downstream=options.flanks)
     regions_dict['tts'] = partial(regions_dict['tts'],
                                   upstream=options.flanks,
