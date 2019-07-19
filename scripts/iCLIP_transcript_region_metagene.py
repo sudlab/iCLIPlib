@@ -63,31 +63,31 @@ import iCLIP
 
 regions_dict = {'5flank': transcript_regions.flank5,
                 '3flank': transcript_regions.flank3,
-                '5UTR' : transcript_regions.UTR5,
-                '3UTR' : transcript_regions.UTR3,
-                'CDS' : transcript_regions.CDS,
-                'first_exon' : transcript_regions.first_exon,
-                'middle_exons' : transcript_regions.middle_exons,
-                'last_exon' : transcript_regions.last_exon,
-                'exons' : transcript_regions.exons,
-                'introns' : transcript_regions.introns,
-                'primary' : transcript_regions.primary_transcript,
+                '5UTR': transcript_regions.UTR5,
+                '3UTR': transcript_regions.UTR3,
+                'CDS': transcript_regions.CDS,
+                'first_exon': transcript_regions.first_exon,
+                'middle_exons': transcript_regions.middle_exons,
+                'last_exon': transcript_regions.last_exon,
+                'exons': transcript_regions.exons,
+                'introns': transcript_regions.introns,
+                'primary': transcript_regions.primary_transcript,
                 'tss': transcript_regions.tss,
-                'tts' : transcript_regions.tts}
+                'tts': transcript_regions.tts}
 
-default_bins = {'5flank': 50,
-                '3flank': 50,
-                '5UTR' : 20,
-                '3UTR' : 70,
-                'CDS' : 100,
-                'first_exon' : 20, 
-                'middle_exons' : 100,
-                'last_exon' : 70,
-                'exons' : 100, 
-                'introns' : 100,
-                'primary' : 100,
-                'tss' : 100,
-                'tts' : 100}
+default_bins = {'5flank': 100,
+                '3flank': 100,
+                '5UTR': 20,
+                '3UTR': 70,
+                'CDS': 100,
+                'first_exon': 20, 
+                'middle_exons': 100,
+                'last_exon': 70,
+                'exons': 200, 
+                'introns': 100,
+                'primary': 100,
+                'tss': 200,
+                'tts': 100}
 
 def main(argv=None):
     """script main.
@@ -105,7 +105,10 @@ def main(argv=None):
                       default=None,
                       help="output full matrix to this file")
     parser.add_option("-f", "--flanks-length", dest="flanks", type="int",
-                      default=100,
+                      default=1000,
+                      help="number of basepairs to use for gene flanks")
+    parser.add_option("-u", "--upstreamflanks-length", dest="tssupflanks", type="int",
+                      default=1000,
                       help="number of basepairs to use for gene flanks")
     parser.add_option("--pseudo_count", dest="pseudo_count", type="float",
                       default=0,
@@ -140,6 +143,10 @@ def main(argv=None):
                       default=None,
                       help="Bins to use. If not specified defaults for the"
                       "chosen regions will be used")
+    parser.add_option("-p", "--profile", dest="profile", type="choice",
+                      choices=iCLIP.getters.profiles.keys(),
+                      help="Read profile for the experiment. Choose from %s"
+                      % ", ".join(iCLIP.getters.profiles.keys()))
     
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -150,14 +157,14 @@ def main(argv=None):
     elif options.bedfile:
         bam = iCLIP.make_getter(bedfile=options.bedfile)
     else:
-        bam = iCLIP.make_getter(bamfile=args[0], centre=options.centre)
+        bam = iCLIP.make_getter(bamfile=args[0], profile=options.profile, centre=options.centre)
 
     regions_dict['5flank'] = partial(regions_dict['5flank'],
                                      length=options.flanks)
     regions_dict['3flank'] = partial(regions_dict['3flank'],
                                      length=options.flanks)
     regions_dict['tss'] = partial(regions_dict['tss'],
-                                  upstream=options.flanks,
+                                  upstream=options.tssupflanks,
                                   downstream=options.flanks)
     regions_dict['tts'] = partial(regions_dict['tts'],
                                   upstream=options.flanks,

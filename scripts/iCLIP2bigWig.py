@@ -1,4 +1,4 @@
-'''
+				'''
 iCLIP2bigWig -- convert iCLIP BAM files to two wig files
 ============================================================
 
@@ -129,13 +129,21 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv
 
+    profiles = iCLIP.getters.profiles.keys()
     # setup command line parser
     parser = E.OptionParser(version="%prog version: $Id$",
                             usage=globals()["__doc__"])
 
+    parser.add_option("-p", "--profile", dest="profile", type="choice",
+                      choices=profiles,
+                      default="iclip",
+                      help="Experiment profile to use. Sets various things"
+                      "about obtaining 1-bp position from read. Options are"
+                      " %s" % ", ".join(profiles))
     parser.add_option("-c", "--use-centre", dest="centre", action="store_true",
-                      default=False,
-                      help="Use centre of read rather than frist base")
+                      default=None,
+                      help="Use centre of read rather than frist base."
+                      "Overrides profile")
     parser.add_option("-f", "--format", dest="format",
                       choices=["bigWig", "bigwig", "BigWig",
                                "bedGraph", "bg", "bedgraph",
@@ -150,6 +158,9 @@ def main(argv=None):
     parser.add_option("--dtype", dest = "dtype", type="string",
                       default="uint32",
                       help="dtype for storing depths")
+    parser.add_option("--cpm", dest="cpm", action="store_true",
+                      default=False,
+                      help="Normalize output depths to number of mapped reads (in millions) in BAM")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -157,13 +168,29 @@ def main(argv=None):
     options.format = options.format.lower()
     if options.format == "bg":
         options.format = "bedgraph"
+
+    profile = iCLIP.getters.profiles[options.profile]
+    
+    if options.centre is not None:
+        centre=True
+    else:
+        centre=profile.centre
     
     if options.stdin == sys.stdin:
         in_bam = pysam.Samfile("-", "rb")
+                                 
     else:
         fn = options.stdin.name
         options.stdin.close()
         in_bam = pysam.Samfile(fn, "rb")
+                                  
+
+    getter = iCLIP.make_getter(in_bam, profile=profile, centre=centre)
+
+    if options.cpm:
+        scale_factor = sum(contig.mapped for contig in in_bam.get_index_statistics())
+
+        scale_factor = 1000000.0/scale_factor
 
     if options.format == "bed":
         bedfile = IOTools.openFile(args[0], "w")
@@ -173,19 +200,25 @@ def main(argv=None):
 
     contig_sizes = []
 
+ 
     for chrom, chrom_length in zip(in_bam.references, in_bam.lengths):
 
         # get depths over chromosome
-        pos_depth, neg_depth, counter = iCLIP.countChr(in_bam.fetch(chrom),
-                                                       chrom_length,
-                                                       options.dtype,
-                                                       centre=options.centre)
+        pos_depth, neg_depth, counter = getter(chrom, strand="both", dtype=options.dtype)
         pos_depth_sorted = pos_depth.sort_index()
         del pos_depth
         neg_depth_sorted = neg_depth.sort_index()
         del neg_depth
         neg_depth_sorted = -1*neg_depth_sorted
+ 
+        if options.cpm:
+            pos_depth_sorted = pos_depth_sorted * scale_factor
+            neg_depth_sorted = neg_depth_sorted * scale_factor
 
+        if options.cpm:
+            pos_depth = pos_depth * scale_factor
+            neg_depth = neg_depth * scale_factor
+            
         # output to temporary wig file
         if options.format == "bed":
             output2Bed(pos_depth_sorted, neg_depth_sorted, chrom, bedfile)
@@ -197,7 +230,7 @@ def main(argv=None):
 
         del pos_depth_sorted
         del neg_depth_sorted
- 
+
     if options.format == "bed":
         bedfile.close()
     else:

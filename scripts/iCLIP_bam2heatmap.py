@@ -46,7 +46,7 @@ sys.path.insert(1, os.path.join(
 
 import iCLIP
 
-sort_choices = ["length", "first-exon", "3utr", "5utr", "none"]
+sort_choices = ["length", "first-exon", "3utr", "5utr", "manual", "none"]
 align_choices = ["start", "end"]
 norm_choices = ["quantile", "sum", "none"]
 annotation_choices = ["start", "end", "3utr", "5utr"]
@@ -195,10 +195,14 @@ def main(argv=None):
                       help="Use this wig for plus strand info rather than bam file")
     parser.add_option("--minus-wig", dest="minus_wig", type="string",
                       help="Use this wig for minus strand info rather than bam file")
+    parser.add_option("--bed", dest="bed", type="string",
+                      help="Use this bed for signal(must be indexed)")
     parser.add_option("--norm-mat", dest="norm_mat", type="string",
                       help="Use this matrix for normalizing (e.g. RNA data")
-    parser.add_option("--bed", dest="bed", type="string",
-                      help="Use this bedfile for input")
+    parser.add_option("--sort-order-file", dest="sort_file", type="string",
+                      default=None,
+                      help="Two column file containing gene names in the first
+                      column and a numeric value to sort on in the second")
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -312,6 +316,10 @@ def main(argv=None):
         sorter = utr5_lengths
     elif options.sort == "first-exon":
         sorter = first_exon_lengths
+    elif options.sort == "manual":
+        sorter = pandas.read_csv(options.sort_file, sep="\t",
+                                 index_col=0, usecols=[0, 1])
+        sorter = sorter[sorter.columns[0]]
     elif options.sort == "none":
         sorter = pandas.Series(range(raw_matrix.shape[0]),
                                index=raw_matrix.index[::-1])

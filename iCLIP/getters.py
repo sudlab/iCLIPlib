@@ -4,6 +4,37 @@ import collections
 from functools import partial
 from bx.bbi.bigwig_file import BigWigFile
 import pysam
+profile = collections.namedtuple("profile", ["centre",
+                                             "read_end",
+                                             "use_deletions",
+                                             "reverse_direction",
+                                             "offset",
+                                             "filter_end"])
+profiles = {"iclip": profile(centre=False,
+                             read_end=False,
+                             use_deletions=True,
+                             reverse_direction=False,
+                             offset=-1,
+                             filter_end="none"),
+            "iclip-centre":  profile(centre=True,
+                                     read_end=False,
+                                     use_deletions=True,
+                                     reverse_direction=False,
+                                     offset=-1,
+                                     filter_end="read1"),
+            "mNETseq-read1":  profile(centre=False,
+                                      read_end=True,
+                                      use_deletions=False,
+                                      reverse_direction=False,
+                                      offset=0,
+                                      filter_end="read1"),
+            "mNETseq-read2": profile(centre=False,
+                                     read_end=False,
+                                     use_deletions=False,
+                                     reverse_direction=True,
+                                     offset=0,
+                                     filter_end="read2")}
+
 
 def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
     '''Get the profile of crosslinks across a genomic region, returning
@@ -47,8 +78,7 @@ def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
                               
 ##################################################
 def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
-                centre=False,
-                read_end=False, use_deletions=True):
+                profile="iclip", **kwargs):
     ''' A factory for getter functions
 
     Parameters
@@ -63,6 +93,14 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
         Name of a BigWig file to use as the minus strand signal
     bedfile: str
         Name of a tabix indexed bed file to use to extract the crosslinks
+    profile: str
+        Name of a predefined set of options that refer to a particular 
+        technique.  Currently implemented are "iclip" (default), "iclip-centre",
+        "mNETseq-read1" and "mNETSeq-read2". Only applys when getter is made 
+        from BAM.
+    
+    Common extra keyword arguments
+    ------------------------------
     centre : bool
         Use the centre of the read rather than the base 5' of the read end.
         Only applicable if using a bamfile to retrieve the signal.
@@ -72,7 +110,14 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
     use_deletions : bool
         Use a deletion in the read as the crosslink base.
         Only applicable if using a bamfile to retrieve the singal.
-
+    reverse_direction : bool
+        Reverse the strand of the tag so that reads on the + strand add counts
+        to the - strand and vice versa (usually combined with filter_end="read2"
+    offset : int
+        Report the base offset by this much from the end of the read. E.g. in
+        iCLIP report the base BEFORE the start of the read
+    filter_end : None or str
+        Filter reads so that only read1s or read2s are used.
     Returns
     -------
     func
@@ -89,6 +134,8 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
     -----
     
     At least one or `bamfile` or `plus_wig` must be provided.
+    If kwargs are provided they override the settings from the profile
+
 
     ToDo
     ----
@@ -96,11 +143,25 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
 
 '''
 
+    if isinstance(profile, basestring):
+        profile = profiles[profile]
+        
+    centre = kwargs.get("centre", profile.centre)
+    read_end = kwargs.get("read_end", profile.read_end)
+    use_deletions = kwargs.get("use_deletions", profile.use_deletions)
+    reverse_direction = kwargs.get("reverse_direction",
+                                   profile.reverse_direction)
+    offset = kwargs.get("offset", profile.offset)
+    filter_end = kwargs.get("filter_end", profile.filter_end)
+    
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
             bamfile = pysam.AlignmentFile(bamfile)
         return partial(_bam_getter, bamfile, centre=centre,
-                       read_end=read_end, use_deletions=use_deletions)
+                       read_end=read_end, use_deletions=use_deletions,
+                       reverse_strand=reverse_direction,
+                       offset=offset,
+                       filter_end=filter_end)
     elif plus_wig is not None:
         plus_wig = BigWigFile(open(plus_wig))
         if minus_wig is not None:
@@ -152,7 +213,8 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
 
 ##################################################    
 def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
-                centre=False, read_end=False, use_deletions=True):
+                centre=False, read_end=False, use_deletions=True,
+                reverse_strand=False, offset=-1, filter_end=None):
     '''A function to get iCLIP coverage across an interval from a BAM file'''
     chr_len = bamfile.lengths[bamfile.gettid(contig)]
     if end is None:
@@ -168,7 +230,13 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
                   % contig)
         return pd.Series()
 
-    counts = countChr(reads, chr_len, dtype, centre, read_end, use_deletions)
+    if filter_end == "read1":
+        reads = (r for r in reads if not r.is_read2)
+    elif filter_end == "read2":
+        reads = (r for r in reads if not r.is_read1)
+        
+    counts = countChr(reads, chr_len, dtype, centre, read_end, use_deletions,
+                      offset)
 
     # Two sets of extrainous reads to exlucde: firstly we have pull back
     # reads with a 1bp extra window. Second fetch pulls back overlapping
@@ -181,13 +249,25 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
     if strand != "+" and len(counts[1]) > 0:
         counts[1] = counts[1].sort_index().loc[
             float(start):float(end-1)]
-    
-    if strand == "+":
+
+    if reverse_strand:
+        positive = "-"
+        negative = "+"
+    else:
+        positive = "+"
+        negative = "-"
+        
+    if strand == positive:
         return counts[0]
-    elif strand == "-":
+    elif strand == negative:
         return counts[1]
     elif strand == ".":
         return counts[0].add(counts[1], fill_value=0)
+    elif strand == "both":
+        if reverse_strand:
+            return (counts[1], counts[0], counts[2])
+        else:
+            return counts
     else:
         raise ValueError("Invalid strand")
 
@@ -217,7 +297,6 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
         if correct_strand:
             profile[float(base.start)] = int(base.score)
             check_sum += int(base.score)
-
 
     profile = pd.Series(dict(profile), dtype=dtype)
 
@@ -257,7 +336,7 @@ def find_first_deletion(cigar):
 
 
 ##################################################
-def getCrosslink(read, centre=False, read_end=False, use_deletions=True):
+def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=-1):
     '''Finds the crosslinked base from a pysam read.
 
     Parameters
@@ -304,7 +383,7 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True):
     reverse_direction = (read.is_reverse and not read_end) or \
                         (not read.is_reverse and read_end)
     
-    if 'D' not in read.cigarstring:
+    if  not use_deletions or 'D' not in read.cigarstring:
 
         if centre:
             reference_bases = read.get_reference_positions(full_length=True)
@@ -314,10 +393,10 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True):
             return reference_bases[i]
 
         if reverse_direction:
-            pos = read.aend
+            pos = read.aend - 1 - offset
 
         else:
-            pos = read.pos - 1
+            pos = read.pos + offset
 
     else:
         if read.is_reverse:
@@ -334,7 +413,7 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True):
 
 ##################################################
 def countChr(reads, chr_len, dtype='uint16', centre=False,
-             read_end=False, use_deletions=True):
+             read_end=False, use_deletions=True, offset=-1):
     ''' Counts the crosslinked bases for each provided read.
 
     Scans through the provided pysam.rowiterator reads and tallys the
@@ -384,7 +463,7 @@ def countChr(reads, chr_len, dtype='uint16', centre=False,
 
     for read in reads:
         
-        pos = getCrosslink(read, centre, read_end, use_deletions)
+        pos = getCrosslink(read, centre, read_end, use_deletions, offset)
         counter += 1
 
         if read.is_reverse:
@@ -405,9 +484,9 @@ def countChr(reads, chr_len, dtype='uint16', centre=False,
     # check for integer overflow: counter sum should add up to array sum
     array_sum = pos_depths.sum() + neg_depths.sum()
     if not counter == array_sum:
-        raise (ValueError,
+        raise (ValueError(
                "Sum of depths is not equal to number of "
-               "reads counted, possibly dtype %s not large enough" % dtype)
+               "reads counted, possibly dtype %s not large enough" % dtype))
     
 #    E.debug("Counted %i truncated on positive strand, %i on negative"
 #            % (counter.truncated_pos, counter.truncated_neg))
