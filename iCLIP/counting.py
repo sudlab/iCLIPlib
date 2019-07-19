@@ -175,7 +175,7 @@ def count_transcript(transcript, bam, flanks=0):
         return counts
     else:
 
-        if counts.sum() > 0:
+        if counts.sum() != 0:
             counts.index = pandas.MultiIndex.from_tuples(
                 zip(*(['exons']*len(counts), counts.index)),
                 names=["region", "base"])
