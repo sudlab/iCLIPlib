@@ -41,7 +41,7 @@ def bin_counts(counts, length, nbins):
     else:
         bases = counts.index
 
-    if counts.sum() > 0:
+    if counts.sum() != 0:
 
         binned_counts = counts.groupby(
             list(pd.cut(bases,
