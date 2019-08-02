@@ -1,4 +1,4 @@
-				'''
+'''
 iCLIP2bigWig -- convert iCLIP BAM files to two wig files
 ============================================================
 
