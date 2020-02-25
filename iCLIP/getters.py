@@ -313,7 +313,10 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
             except KeyError:
                 profile[float(base.start)] = 1
                 check_sum += 1
-               
+
+    if len(profile.keys())==0:
+        profile = pd.Series(profile, dtype=dtype, index=pd.Index([], dtype="float"))
+        
     profile = pd.Series(dict(profile), dtype=dtype)
 
             
