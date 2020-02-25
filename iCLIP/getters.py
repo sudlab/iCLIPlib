@@ -299,11 +299,21 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
             correct_strand = strand == "." or base.strand == strand
         except AttributeError:
             correct_strand = True
+        except KeyError:
+            correct_strand = True
             
         if correct_strand:
-            profile[float(base.start)] = int(base.score)
-            check_sum += int(base.score)
 
+            try:
+                profile[float(base.start)] = int(base.score)
+                check_sum += int(base.score)
+            except AttributeError:
+                profile[float(base.start)] = 1
+                check_sum += 1
+            except KeyError:
+                profile[float(base.start)] = 1
+                check_sum += 1
+               
     profile = pd.Series(dict(profile), dtype=dtype)
 
             
