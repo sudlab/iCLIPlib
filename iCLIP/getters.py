@@ -195,7 +195,7 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
                       % (contig, start, end))
 
     if strand == "+" or minus_wig is None:
-        counts = plus_wig.get_as_array(contig, start, end)
+        counts = plus_wig.get_as_array(contig, int(start), int(end))
         result = pd.Series(
             counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
