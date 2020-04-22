@@ -431,7 +431,7 @@ def transcript_region_meta(transcript, getter, regions, names, bins, length_norm
     region_exons = [r for r, l in zip(region_exons, region_lengths) if l > 0]
     region_lengths = [l for l in region_lengths if l > 0]
     bins = [b for b, l in zip(bins, region_lengths) if l > 0]
-    names = [n for n, l in zip(names, region_lengths) if l > 0]
+    valid_names = [n for n, l in zip(names, region_lengths) if l > 0]
     
     region_counts = [count_transcript(t, getter) for t in region_exons]
     region_binned_counts = [bin_counts(c, l, b) for c, l, b in
@@ -440,7 +440,14 @@ def transcript_region_meta(transcript, getter, regions, names, bins, length_norm
         region_binned_counts = [x*b/l for x, l, b in zip(region_binned_counts,
                                                          region_lengths,
                                                          bins)]
+
+    try:
+        profile = pd.concat(region_binned_counts, keys=valid_names,
+                            names=["region", "region_bin"])
+                    
+    except ValueError:
+        if len(region_binned_counts) == 0:
+            profile = pd.concat([pd.Series([]), pd.Series([])], keys=names,
+                            names=["region", "region_bin"])
         
-    profile = pd.concat(region_binned_counts, keys=names,
-                        names=["region", "region_bin"])
     return profile
