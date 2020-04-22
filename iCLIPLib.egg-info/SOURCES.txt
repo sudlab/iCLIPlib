@@ -1,0 +1,16 @@
+README.rst
+setup.py
+iCLIP/__init__.py
+iCLIP/clusters.py
+iCLIP/counting.py
+iCLIP/distance.py
+iCLIP/getters.py
+iCLIP/kmers.py
+iCLIP/meta.py
+iCLIP/random.py
+iCLIP/transcript_regions.py
+iCLIP/utils.py
+iCLIPLib.egg-info/PKG-INFO
+iCLIPLib.egg-info/SOURCES.txt
+iCLIPLib.egg-info/dependency_links.txt
+iCLIPLib.egg-info/top_level.txt

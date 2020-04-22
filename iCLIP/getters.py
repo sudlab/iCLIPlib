@@ -316,8 +316,8 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
 
     if len(profile.keys())==0:
         profile = pd.Series(profile, dtype=dtype, index=pd.Index([], dtype="float"))
-        
-    profile = pd.Series(dict(profile), dtype=dtype)
+    else:
+        profile = pd.Series(dict(profile), dtype=dtype)
 
             
     #if not check_sum == profile.sum():
