@@ -109,13 +109,13 @@ def main(argv=None):
                          for x in range(len(args) - 1)]
                     for sf in args}
 
-    contigs = zip(samfiles[0].references, samfiles[0].lengths)
+    contigs = list(zip(samfiles[0].references, samfiles[0].lengths))
     
     if options.track:
-        use_index, use_names = zip(*[(i,fn) for i,fn in enumerate(args)
-                               if fn == options.track])
+        use_index, use_names = list(zip(*[(i,fn) for i,fn in enumerate(args)
+                               if fn == options.track]))
     else:
-        use_index, use_names = zip(*enumerate(args))
+        use_index, use_names = list(zip(*enumerate(args)))
 
     if options.contig:
         contigs = [x for x in contigs if x[0] == options.contig]

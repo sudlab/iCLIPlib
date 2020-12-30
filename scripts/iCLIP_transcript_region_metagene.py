@@ -144,7 +144,7 @@ def main(argv=None):
                       help="Bins to use. If not specified defaults for the"
                       "chosen regions will be used")
     parser.add_option("-p", "--profile", dest="profile", type="choice",
-                      choices=iCLIP.getters.profiles.keys(),
+                      choices=list(iCLIP.getters.profiles.keys()),
                       help="Read profile for the experiment. Choose from %s"
                       % ", ".join(iCLIP.getters.profiles.keys()))
     

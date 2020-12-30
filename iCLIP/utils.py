@@ -20,7 +20,7 @@ AMBIGUITY_CODES = {'M': 'AC',
 ##################################################
 def IUPAC2Regex(sequence):
 
-    for code, regex in AMBIGUITY_CODES.iteritems():
+    for code, regex in AMBIGUITY_CODES.items():
         sequence = re.sub(code, '[%s]' % regex, sequence)
 
     return sequence
@@ -128,7 +128,7 @@ class TranscriptCoordInterconverter:
             intervals.sort(reverse=False)
 
         self.offset = intervals[0][0]
-        self.genome_intervals = [map(abs, (x-self.offset, y-self.offset))
+        self.genome_intervals = [list(map(abs, (x-self.offset, y-self.offset)))
                                  for x, y in intervals]
 
         interval_sizes = [abs(y-x) for x, y in intervals]

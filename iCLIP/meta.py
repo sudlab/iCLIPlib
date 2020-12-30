@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import CGAT.GTF as GTF
 
-from counting import count_transcript
-from counting import count_intervals
+from .counting import count_transcript
+from .counting import count_intervals
 
 
 ##################################################
@@ -302,7 +302,9 @@ def get_binding_matrix(bamfile,
         matrix.append(counts)
 
     matrix = pd.concat(matrix, axis=1)
-    matrix = matrix.reindex(range(-1*(left_margin/25)*25, (right_margin/25)*25, bin_size),
+    matrix = matrix.reindex(range(-1*(left_margin/25)*25, 
+                                  (right_margin/25)*25,
+                                   bin_size),
                             fill_value = 0)
     matrix = matrix.T.fillna(0)
 

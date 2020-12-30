@@ -7,8 +7,8 @@ import string
 import CGAT.GTF as GTF
 import CGAT.Experiment as E
 
-from utils import spread, rand_apply, AMBIGUITY_CODES
-from counting import count_transcript, count_intervals
+from .utils import spread, rand_apply, AMBIGUITY_CODES
+from .counting import count_transcript, count_intervals
 
 trans = string.maketrans('ATGCN', 'TACGN')
 
@@ -52,8 +52,7 @@ def find_all_matches(sequence, regexes):
     for i in range(len(sequence)-kmer_len+1):
         mstarts[sequence[i:i+kmer_len]].append(i)
 
-    
-    results =  pd.Series({k: np.asarray(v) for k, v in mstarts.iteritems()})
+    results = pd.Series({k: np.asarray(v) for k, v in mstarts.items()})
 
     return results
 
@@ -188,7 +187,7 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
     task will then be parrellized, gene-wise. 
     '''
     
-    bases = AMBIGUITY_CODES.keys()
+    bases = list(AMBIGUITY_CODES.keys())
     bases.remove("N")
     kmers = itertools.product('CGAT', repeat=kmer_length)
     kmers = ["".join(kmer) for kmer in kmers]
@@ -207,8 +206,7 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
 
     if pool:
         results_iterator = pool.imap_unordered(_par_call, args)
-     
-        
+       
     else:
         results_iterator = (_get_regex_frequencies(*arg) for arg in args)
 
@@ -227,7 +225,6 @@ def pentamer_enrichment(gtf_chunk_iterator, bam, fasta, kmer_length=5,
     observed_kmer_counts = observed_kmer_counts/observed_kmer_counts.sum()
     randomised_kmer_counts = randomised_kmer_counts.div(randomised_kmer_counts.sum(axis=0), axis=1)
 
-  #  print randomised_kmer_counts.sum(axis=0).to_string()
     # summary states
     means = randomised_kmer_counts.mean(axis=1)
 

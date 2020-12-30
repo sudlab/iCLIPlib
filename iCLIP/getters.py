@@ -149,7 +149,7 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
 
 '''
 
-    if isinstance(profile, basestring):
+    if isinstance(profile, str):
         profile = profiles[profile]
         
     centre = kwargs.get("centre", profile.centre)
@@ -314,7 +314,7 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
                 profile[float(base.start)] = 1
                 check_sum += 1
 
-    if len(profile.keys())==0:
+    if len(list(profile.keys()))==0:
         profile = pd.Series(profile, dtype=dtype, index=pd.Index([], dtype="float"))
         
     profile = pd.Series(dict(profile), dtype=dtype)
@@ -325,6 +325,7 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
     #                        % (check_sum, profile.sum()))
 
     return profile
+ 
  
 def find_first_deletion(cigar):
     '''Find the position of the the first deletion in a
@@ -503,9 +504,9 @@ def countChr(reads, chr_len, dtype='uint16', centre=False,
     # check for integer overflow: counter sum should add up to array sum
     array_sum = pos_depths.sum() + neg_depths.sum()
     if not counter == array_sum:
-        raise (ValueError(
+        raise ValueError(
                "Sum of depths is not equal to number of "
-               "reads counted, possibly dtype %s not large enough" % dtype))
+               "reads counted, possibly dtype %s not large enough" % dtype)
     
 #    E.debug("Counted %i truncated on positive strand, %i on negative"
 #            % (counter.truncated_pos, counter.truncated_neg))

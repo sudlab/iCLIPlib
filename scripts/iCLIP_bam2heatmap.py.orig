@@ -66,7 +66,7 @@ def get_matrix(getter, lengths, options):
 
     if getter is None:
         E.error("No bamfile or wigfile specified")
-        print((globals()["__usage__"]))
+        print(globals()["__usage__"])
         return(1)
 
     f = IOTools.openFile(options.gtf)
@@ -199,10 +199,15 @@ def main(argv=None):
                       help="Use this bed for signal(must be indexed)")
     parser.add_option("--norm-mat", dest="norm_mat", type="string",
                       help="Use this matrix for normalizing (e.g. RNA data")
+<<<<<<< HEAD
+    parser.add_option("--bed", dest="bed", type="string",
+                      help="Use this bedfile for input")
+=======
     parser.add_option("--sort-order-file", dest="sort_file", type="string",
                       default=None,
-                      help="Two column file containing gene names in the first"
-                           "column and a numeric value to sort on in the second")
+                      help="Two column file containing gene names in the first
+                      column and a numeric value to sort on in the second")
+>>>>>>> bda3f6b1fc9817f7b9400d2a78f0c11f653430fb
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.Start(parser, argv=argv)
@@ -282,13 +287,13 @@ def main(argv=None):
         raw_matrix = get_matrix(getter, lengths, options)
 
     if options.crop:
-        crop_from, crop_to = list(map(int, options.crop.split(":")))
+        crop_from, crop_to = map(int, options.crop.split(":"))
         raw_matrix = raw_matrix.loc[:, crop_from:crop_to]
 
     if options.norm_mat:
         norm_matrix = pandas.read_csv(options.norm_mat,
-                                      sep="\t",
-                                      index_col=0)
+                                     sep="\t",
+                                     index_col=0)
         norm_matrix.columns = norm_matrix.columns.astype("int")
 
         if options.crop:
@@ -351,7 +356,7 @@ def main(argv=None):
         try:
             from rpy2.robjects import r as R
             from rpy2 import robjects as ro
-        except ImportError:
+        except:
             E.info("No rpy2. Not plotting image")
             return(0)
 

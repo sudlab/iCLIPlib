@@ -84,7 +84,7 @@ def outputToBG(depths,chrom, chrom_size, bgfile):
     text and writes it to the specified file '''
 
     depths.index = depths.index
-    for row in depths.iteritems():
+    for row in depths.items():
         row = list(row)
         if row[0] <= 0 or row[0] >= chrom_size-1:
             continue
@@ -129,7 +129,7 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv
 
-    profiles = iCLIP.getters.profiles.keys()
+    profiles = list(iCLIP.getters.profiles.keys())
     # setup command line parser
     parser = E.OptionParser(version="%prog version: $Id$",
                             usage=globals()["__doc__"])

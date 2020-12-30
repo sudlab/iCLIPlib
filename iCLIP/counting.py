@@ -12,9 +12,9 @@ import pysam
 import CGAT.Experiment as E
 import CGAT.GTF as GTF
 
-from utils import TranscriptCoordInterconverter
+from .utils import TranscriptCoordInterconverter
 
-from getters import make_getter
+from .getters import make_getter
 
 
 

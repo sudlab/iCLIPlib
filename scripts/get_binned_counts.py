@@ -72,7 +72,7 @@ def main(argv=None):
     except IndexError:
         raise ValueError("Please supply a BAM file as the first arguement")
 
-    contigs = zip(samfile.references, samfile.lengths)
+    contigs = list(zip(samfile.references, samfile.lengths))
     if options.contig:
         contigs = [x for x in contigs if x[0] == options.contig]
 
@@ -101,10 +101,10 @@ def main(argv=None):
                               ".", str(int(score)), strand])
 
 
-        for bin, score in pos_bin_sums.iteritems():
+        for bin, score in pos_bin_sums.items():
             options.stdout.write(_score2bed(bin, score, "+") + "\n")
 
-        for bin, score in neg_bin_sums.iteritems():
+        for bin, score in neg_bin_sums.items():
             options.stdout.write(_score2bed(bin, score, "-") + "\n")
         
     # write footer and output benchmark information.
