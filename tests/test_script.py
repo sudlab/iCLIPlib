@@ -183,7 +183,7 @@ class check_script:
                                 if len(diffs) > 10:
                                     break
 
-                        msg += "first 10 differences: {}".format(
+                        msg += " first 10 differences:\n {}".format(
                             "\n--\n".join(
                                 ["\n".join(map(str, (x)))
                                  for x in diffs]))
@@ -230,7 +230,7 @@ def test_tool():
     fn = 'tests/test_scripts.yaml'
     assert os.path.exists(fn), "test_scripts.yaml does not exist!"
 
-    tool_tests = yaml.load(open(fn))
+    tool_tests = yaml.load(open(fn), Loader=yaml.SafeLoader)
 
     for test, values in sorted(list(tool_tests.items())):
         checker = check_script()
