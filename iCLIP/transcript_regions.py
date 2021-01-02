@@ -12,8 +12,8 @@ CDS and the UTRs require there to be at least one CDS
 entry in the transcripts.
 '''
 
-import CGAT.GTF as GTF
-import CGAT.Intervals as Intervals
+import cgat.GTF as GTF
+import cgat.Intervals as Intervals
 
 
 def flank5(transcript, length=500):

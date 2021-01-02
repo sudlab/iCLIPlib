@@ -169,9 +169,9 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
                        offset=offset,
                        filter_end=filter_end)
     elif plus_wig is not None:
-        plus_wig = BigWigFile(open(plus_wig))
+        plus_wig = BigWigFile(open(plus_wig, 'rb'))
         if minus_wig is not None:
-            minus_wig = BigWigFile(open(minus_wig))
+            minus_wig = BigWigFile(open(minus_wig, 'rb'))
 
         return partial(_wig_getter, plus_wig=plus_wig, minus_wig=minus_wig)
     elif bedfile is not None:
@@ -195,20 +195,20 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
                       % (contig, start, end))
 
     if strand == "+" or minus_wig is None:
-        counts = plus_wig.get_as_array(contig, int(start), int(end))
+        counts = plus_wig.get_as_array(contig.encode(), int(start), int(end))
         result = pd.Series(
             counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
  
     elif strand == "-":
-        counts = -1 * minus_wig.get_as_array(contig, start, end)
+        counts = -1 * minus_wig.get_as_array(contig.encode(), start, end)
         result = pd.Series(
             counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
 
     elif strand == ".":
-        plus_counts = plus_wig.get_as_array(contig, start, end)
-        minus_counts = -1 * minus_wig.get_as_array(contig, start, end)
+        plus_counts = plus_wig.get_as_array(contig.encode(), start, end)
+        minus_counts = -1 * minus_wig.get_as_array(contig.encode(), start, end)
         plus_result = pd.Series(
             plus_counts, index=np.arange(start, end, dtype="float")).dropna()
         minus_result = pd.Series(
@@ -407,7 +407,7 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
 
         if centre:
             reference_bases = read.get_reference_positions(full_length=True)
-            i = len(reference_bases)/2
+            i = int(len(reference_bases)/2)
             while reference_bases[i] is None and i > 0:
                 i = i -1
             return reference_bases[i]

@@ -9,8 +9,8 @@ from functools import partial
 from bx.bbi.bigwig_file import BigWigFile
 import pysam
 
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
+import cgatcore.experiment as E
+import cgat.GTF as GTF
 
 from .utils import TranscriptCoordInterconverter
 
@@ -160,7 +160,7 @@ def count_transcript(transcript, bam, flanks=0):
             return pandas.Series(index=pandas.MultiIndex(
                 levels=[["flank5", "exon", "flank3"],
                         []],
-                labels=[[], []],
+                codes=[[], []],
                 names=["region", "base"]))
 
     counts = count_intervals(bam, exons,
@@ -181,12 +181,18 @@ def count_transcript(transcript, bam, flanks=0):
                 names=["region", "base"])
 
         else:
-            # deal with empty case
-            counts.index = pandas.MultiIndex(
-                levels=[["flank5", "exon", "flank3"],
-                        []],
-                labels=[[], []],
+            # deal with empty case. Cannot just return an empty series with the
+            # correct index, as this screws up any group-bys that need to
+            # run for every group (even if empty).
+            counts = pandas.Series(0)
+            counts.index = pandas.MultiIndex.from_tuples(
+                [('exons', 1)],
                 names=["region", "base"])
+            #counts.index = pandas.MultiIndex(
+            #    levels=[["flank5", "exon", "flank3"],
+            #            []],
+            #    codes=[[], []],
+            #    names=["region", "base"])
  
         transcript_min = min([a for a, b in exons])
         transcript_max = max([b for a, b in exons])
@@ -222,29 +228,36 @@ def count_transcript(transcript, bam, flanks=0):
             flank3_counts.index = pandas.MultiIndex.from_tuples(
                 zip(*(index3*len(bases3), bases3)), names=["region", "base"])
         else:
-            # deal with empty case
-            flank3_counts.index = pandas.MultiIndex(
-                levels=[["flank5", "exon", "flank3"],
-                        []],
-                labels=[[], []],
+            # deal with empty case - see counts case above
+            flank3_counts = pandas.Series(0)
+            flank3_counts.index = pandas.MultiIndex.from_tuples(
+                [(index3[0], 1)],
                 names=["region", "base"])
+            #flank3_counts.index = pandas.MultiIndex(
+            #    levels=[["flank5", "exon", "flank3"],
+            #            []],
+            #    codes=[[], []],
+            #    names=["region", "base"])
 
         if flank5_counts.sum() > 0:
             flank5_counts.index = pandas.MultiIndex.from_tuples(
                 zip(*(index5*len(bases5), bases5)), names=["region", "base"])
         else:
-            # deal with empty case
-            flank5_counts.index = pandas.MultiIndex(
-                levels=[["flank5", "exon", "flank3"],
-                        []],
-                labels=[[], []],
+            # deal with empty case - see counts case above. 
+            flank5_counts = pandas.Series(0)
+            flank5_counts.index = pandas.MultiIndex.from_tuples(
+                [(index5[0], 1)],
                 names=["region", "base"])
+            #flank5_counts.index = pandas.MultiIndex(
+            #    levels=[["flank5", "exon", "flank3"],
+            #            []],
+            #    codes=[[], []],
+            #    names=["region", "base"])
 
         E.debug("After direction detection and reindexing:")
         E.debug(flank3_counts)
         E.debug(flank5_counts)
 
         result = pandas.concat([flank5_counts, counts, flank3_counts])
-
         return result
 

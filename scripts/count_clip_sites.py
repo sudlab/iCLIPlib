@@ -40,9 +40,9 @@ Command line options
 '''
 
 import sys
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
-import CGAT.Intervals as Intervals
+import cgatcore.experiment as E
+import cgat.GTF as GTF
+import cgat.Intervals as Intervals
 import os
 import pysam
 
@@ -81,7 +81,7 @@ def main(argv=None):
                       help="Use centre of read rather than start")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     iterator = GTF.iterator(options.stdin)
 
@@ -135,7 +135,7 @@ def main(argv=None):
 
             try:
                 exon_id = feature[0].exon_id
-            except AttributeError:
+            except KeyError:
                 try:
                     exon_id = feature[0].exon_number
                 except AttributeError:
@@ -167,7 +167,7 @@ def main(argv=None):
     options.stdout.write(outlines + "\n")
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

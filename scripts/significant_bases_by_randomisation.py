@@ -70,8 +70,8 @@ import os
 import pysam
 import numpy
 
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
+import cgatcore.experiment as E
+import cgat.GTF as GTF
 
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
@@ -126,7 +126,7 @@ def main(argv=None):
                       "mutation is present")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     if options.proc is not None:
         try:
@@ -177,7 +177,7 @@ def main(argv=None):
     results["FDR"] = -numpy.log10(results["FDR"])
     results.to_csv(options.stdout, header=False, index=False, sep="\t")
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

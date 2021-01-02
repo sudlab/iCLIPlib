@@ -55,9 +55,9 @@ Command line options
 
 import sys
 import os
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
-import CGAT.Bed as Bed
+import cgatcore.experiment as E
+import cgat.GTF as GTF
+import cgat.Bed as Bed
 import pysam
 
 sys.path.insert(1, os.path.join(
@@ -111,7 +111,7 @@ def main(argv=None):
                            " mean and stdev of distance")
  
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     profile1_file, profile2_file = args
     profile1_file = pysam.AlignmentFile(profile1_file)
@@ -175,7 +175,7 @@ def main(argv=None):
         options.stdout.write(
           "%(contig)s\t%(start)i\t%(end)i\t%(transcript_id)s\t%(strand)s\t%(distance).3f\t%(z).2f\n" % locals())
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

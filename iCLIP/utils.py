@@ -1,7 +1,7 @@
 import re
 import numpy as np
 import pandas as pd
-import CGAT.GTF as GTF
+import cgat.GTF as GTF
 
 
 AMBIGUITY_CODES = {'M': 'AC',

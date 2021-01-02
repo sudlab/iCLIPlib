@@ -47,15 +47,15 @@ Command line options
 
 import sys
 import os
-import CGAT.Experiment as E
+import cgatcore.experiment as E
 import pysam
-import CGAT.IOTools as IOTools
+import cgatcore.iotools as iotools
 import iCLIP.transcript_regions as transcript_regions
 from iCLIP.meta import transcript_region_meta
 from itertools import product
 from functools import partial
 import pandas
-from CGAT import GTF
+from cgat import GTF
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
 
@@ -149,7 +149,7 @@ def main(argv=None):
                       % ", ".join(iCLIP.getters.profiles.keys()))
     
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     if options.plus_wig:
         bam = iCLIP.make_getter(plus_wig=options.plus_wig,
@@ -225,13 +225,13 @@ def main(argv=None):
         counts_matrix = counts_matrix.reset_index(drop=True)
         counts_matrix = counts_matrix.transpose()
 
-        counts_matrix.to_csv(IOTools.openFile(options.matrix, "w"),
+        counts_matrix.to_csv(iotools.open_file(options.matrix, "w"),
                              sep="\t",
                              index=True,
                              index_label="transcript_id")
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

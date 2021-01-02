@@ -34,10 +34,10 @@ Command line options
 
 import sys
 import os
-import CGAT.Experiment as E
-from CGAT import GTF
-from CGAT import IOTools
-from CGAT import Intervals
+import cgatcore.experiment as E
+from cgat import GTF
+from cgatcore import iotools
+from cgat import Intervals
 import pysam
 import pandas
 
@@ -69,7 +69,7 @@ def get_matrix(getter, lengths, options):
         print((globals()["__usage__"]))
         return(1)
 
-    f = IOTools.openFile(options.gtf)
+    f = iotools.open_file(options.gtf)
     if options.feature == "gene":
         gtf_iterator = GTF.flat_gene_iterator(GTF.iterator(f))
     else:
@@ -205,14 +205,14 @@ def main(argv=None):
                            "column and a numeric value to sort on in the second")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     if options.plot and (options.height is None):
         options.height = 100
 
     if options.gtf:
         
-        f = IOTools.openFile(options.gtf)
+        f = iotools.open_file(options.gtf)
         if options.feature == "gene":
             gtf_iterator = GTF.flat_gene_iterator(GTF.iterator(f))
         else:
@@ -339,7 +339,7 @@ def main(argv=None):
         E.info("Input and output matrices are identical, no matrix output")
     else:
         if options.outfile_pattern:
-            mat_outfile = IOTools.openFile(
+            mat_outfile = iotools.open_file(
                 options.outfile_pattern + ".matrix.tsv.gz", "w")
         else:
             mat_outfile = options.stdout
@@ -415,7 +415,7 @@ def main(argv=None):
         R["dev.off"]()
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

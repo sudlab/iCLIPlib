@@ -4,13 +4,13 @@ import numpy as np
 import collections
 import itertools
 import string
-import CGAT.GTF as GTF
-import CGAT.Experiment as E
+import cgat.GTF as GTF
+import cgatcore.experiment as E
 
 from .utils import spread, rand_apply, AMBIGUITY_CODES
 from .counting import count_transcript, count_intervals
 
-trans = string.maketrans('ATGCN', 'TACGN')
+trans = str.maketrans('ATGCN', 'TACGN')
 
 def revcomp(sequence):
 
