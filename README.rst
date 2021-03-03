@@ -34,7 +34,7 @@ In addition to this are implementations for a number of published analyses:
      
 and a number of scripts that implement example analyses. 
 
-The requirements are CGAT, pysam, numpy, bxpython and pandas.
+The requirements for the module are cgat-apps, pysam, numpy, bxpython and pandas, all installable from conda/bioconda
 The pipeline has numerous other requirements. 
 
 The documents are currently in the docs folder and in the code. Look out for them on readthedocs very soon.
