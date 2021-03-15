@@ -171,7 +171,7 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
 
     if isinstance(profile, str):
         profile = profiles[profile]
-        
+ 
     centre = kwargs.get("centre", profile.centre)
     read_end = kwargs.get("read_end", profile.read_end)
     use_deletions = kwargs.get("use_deletions", profile.use_deletions)
@@ -181,7 +181,7 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
     filter_end = kwargs.get("filter_end", profile.filter_end)
     use_mismatches = kwargs.get("use_mismatches", profile.use_mismatches)
     use_read_end = kwargs.get("use_read_end", profile.use_read_end)
-        
+      
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
             bamfile = pysam.AlignmentFile(bamfile)
@@ -189,7 +189,9 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
                        read_end=read_end, use_deletions=use_deletions,
                        reverse_strand=reverse_direction,
                        offset=offset,
-                       filter_end=filter_end)
+                       filter_end=filter_end,
+                       use_mismatches=use_mismatches,
+                       use_read_end=use_read_end)
     elif plus_wig is not None:
         plus_wig = BigWigFile(open(plus_wig, 'rb'))
         if minus_wig is not None:
@@ -477,8 +479,10 @@ def getCrosslink(read,
 
         for base in ref_seq:
             #mismatches are lowercase
-            if ref_seq[3].islower():
-                pos = ref_seq[2]
+            if base[1] is None:
+                continue
+            if base[2].islower():
+                pos = base[1]
                 break
 
     elif use_read_end:
@@ -495,7 +499,6 @@ def getCrosslink(read,
         else:
             pos = read.pos + offset
 
-    assert pos is not None
     return pos
 
 
