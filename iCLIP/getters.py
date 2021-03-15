@@ -6,40 +6,60 @@ from bx.bbi.bigwig_file import BigWigFile
 import pysam
 profile = collections.namedtuple("profile", ["centre",
                                              "read_end",
+                                             "use_read_end",
                                              "use_deletions",
                                              "reverse_direction",
                                              "offset",
-                                             "filter_end"])
+                                             "filter_end",
+                                             "use_mismatches"])
 profiles = {"iclip": profile(centre=False,
                              read_end=False,
+                             use_read_end=True,
                              use_deletions=True,
                              reverse_direction=False,
                              offset=-1,
-                             filter_end="none"),
+                             filter_end="none",
+                             use_mismatches=False),
             "eclip": profile(centre=False,
                              read_end=False,
+                             use_read_end=True,
                              use_deletions=True,
                              reverse_direction=False,
                              offset=-1,
-                             filter_end="read2"),
+                             filter_end="read2",
+                             use_mismatches=False),
             "iclip-centre":  profile(centre=True,
                                      read_end=False,
+                                     use_read_end=True,
                                      use_deletions=True,
                                      reverse_direction=False,
                                      offset=-1,
-                                     filter_end="read1"),
+                                     filter_end="read1",
+                                     use_mismatches=False),
             "mNETseq-read1":  profile(centre=False,
                                       read_end=True,
+                                      use_read_end=True,
                                       use_deletions=False,
                                       reverse_direction=False,
                                       offset=0,
-                                      filter_end="read1"),
+                                      filter_end="read1",
+                                      use_mismatches=False),
             "mNETseq-read2": profile(centre=False,
                                      read_end=False,
+                                     use_read_end=True,
                                      use_deletions=False,
                                      reverse_direction=True,
                                      offset=0,
-                                     filter_end="read2")}
+                                     filter_end="read2", 
+                                     use_mismatches=False),
+            "CRAC": profile(centre=False,
+                            read_end=False,
+                            use_read_end=False,
+                            use_deletions=True,
+                            reverse_direction=False,
+                            offset=-1,
+                            filter_end="none",
+                            use_mismatches=True)}
 
 
 def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
@@ -159,7 +179,9 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
                                    profile.reverse_direction)
     offset = kwargs.get("offset", profile.offset)
     filter_end = kwargs.get("filter_end", profile.filter_end)
-    
+    use_mismatches = kwargs.get("use_mismatches", profile.use_mismatches)
+    use_read_end = kwargs.get("use_read_end", profile.use_read_end)
+        
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
             bamfile = pysam.AlignmentFile(bamfile)
@@ -220,7 +242,8 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
 ##################################################    
 def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
                 centre=False, read_end=False, use_deletions=True,
-                reverse_strand=False, offset=-1, filter_end=None):
+                reverse_strand=False, offset=-1, filter_end=None,
+                use_mismatches=False, use_read_end=True):
     '''A function to get iCLIP coverage across an interval from a BAM file'''
     chr_len = bamfile.lengths[bamfile.gettid(contig)]
     if end is None:
@@ -241,8 +264,15 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
     elif filter_end == "read2":
         reads = (r for r in reads if not r.is_read1)
         
-    counts = countChr(reads, chr_len, dtype, centre, read_end, use_deletions,
-                      offset)
+    counts = countChr(reads=reads, 
+                      chr_len=chr_len,
+                      dtype=dtype,
+                      centre=centre,
+                      read_end=read_end,
+                      use_deletions=use_deletions,
+                      offset=offset,
+                      use_mismatches=use_mismatches,
+                      use_read_end=use_read_end)
 
     # Two sets of extrainous reads to exlucde: firstly we have pull back
     # reads with a 1bp extra window. Second fetch pulls back overlapping
@@ -356,7 +386,14 @@ def find_first_deletion(cigar):
 
 
 ##################################################
-def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=-1):
+def getCrosslink(read, 
+                 centre=False,
+                 read_end=False,
+                 use_deletions=True,
+                 offset=-1,
+                 use_read_end=True,
+                 use_mismatches=False
+                 ):
     '''Finds the crosslinked base from a pysam read.
 
     Parameters
@@ -369,11 +406,22 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
     use_deletions : bool
         If a deletion is present in the gene, use it as the crosslinks
         base. 
+    use_mismatches: bool
+        If a mismatch is present in the read, use it as the crosslinked
+        base
+    use_read_end: bool
+        Use one end of the read or the other. 
+    offset: int
+        How much to offset the returned base from the end of the read:
+        if we are using the 5' end of the read, then for iCLIP, you want
+        the base before the end of the read.
              
     Returns
     -------
     int 
-         Position of crosslink in 0-based genome coordinates.
+         Position of crosslink in 0-based genome coordinates. Will return
+         None if configured not to use read end and there are no deletions
+         and/or mismatches. 
          
     Notes
     -----
@@ -403,8 +451,37 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
     reverse_direction = (read.is_reverse and not read_end) or \
                         (not read.is_reverse and read_end)
     
-    if  not use_deletions or 'D' not in read.cigarstring:
+    pos = None
+    if use_mismatches:
+        try:
+            NM = read.get_tag("NM")
+        except KeyError:
+            NM = 0
+    
+    if  use_deletions and 'D' in read.cigarstring: 
 
+        if read.is_reverse:
+            cigar = reversed(read.cigar)
+            position = find_first_deletion(cigar)
+            pos = read.aend - position - 1
+
+        else:
+            position = find_first_deletion(read.cigar)
+            pos = read.pos + position
+
+    elif use_mismatches and NM>0:
+
+        ref_seq = read.get_aligned_pairs(with_seq=True)
+        if read.is_reverse:
+            ref_seq = reversed(ref_seq)
+
+        for base in ref_seq:
+            #mismatches are lowercase
+            if ref_seq[3].islower():
+                pos = ref_seq[2]
+                break
+
+    elif use_read_end:
         if centre:
             reference_bases = read.get_reference_positions(full_length=True)
             i = int(len(reference_bases)/2)
@@ -418,22 +495,15 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
         else:
             pos = read.pos + offset
 
-    else:
-        if read.is_reverse:
-            cigar = reversed(read.cigar)
-            position = find_first_deletion(cigar)
-            pos = read.aend - position - 1
-
-        else:
-            position = find_first_deletion(read.cigar)
-            pos = read.pos + position
-
+    assert pos is not None
     return pos
 
 
 ##################################################
 def countChr(reads, chr_len, dtype='uint16', centre=False,
-             read_end=False, use_deletions=True, offset=-1):
+             read_end=False, use_deletions=True, offset=-1,
+             use_mismatches=False, use_read_end=True
+             ):
     ''' Counts the crosslinked bases for each provided read.
 
     Scans through the provided pysam.rowiterator reads and tallys the
@@ -483,9 +553,18 @@ def countChr(reads, chr_len, dtype='uint16', centre=False,
 
     for read in reads:
         
-        pos = getCrosslink(read, centre, read_end, use_deletions, offset)
-        counter += 1
+        pos = getCrosslink(read, 
+                           centre=centre,
+                           read_end=read_end,
+                           use_deletions=use_deletions,
+                           offset=offset,
+                           use_mismatches=use_mismatches,
+                           use_read_end=use_read_end)
+        if pos is None:
+            continue
 
+        counter += 1
+        
         if read.is_reverse:
             neg_depths[float(pos)] += 1
         else:

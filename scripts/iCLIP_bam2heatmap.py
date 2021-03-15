@@ -120,6 +120,8 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv
 
+    profiles = list(iCLIP.getters.profiles.keys())
+
     # setup command line parser
     parser = E.OptionParser(version="%prog version: $Id$",
                             usage=globals()["__doc__"])
@@ -203,6 +205,12 @@ def main(argv=None):
                       default=None,
                       help="Two column file containing gene names in the first"
                            "column and a numeric value to sort on in the second")
+    parser.add_option("-p", "--profile", dest="profile", type="choice",
+                      choices=profiles,
+                      default="iclip",
+                      help="Experiment profile to use. Sets various things"
+                      "about obtaining 1-bp position from read. Options are"
+                      " %s" % ", ".join(profiles))                       
 
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.start(parser, argv=argv)
@@ -266,7 +274,7 @@ def main(argv=None):
         getter = iCLIP.make_getter(bedfile=options.bed)
     else:
         try:
-            getter = iCLIP.make_getter(bamfile=args[0])
+            getter = iCLIP.make_getter(bamfile=args[0], profile=options.profile)
         except IOError:
             E.error("Cannot open bamfile %s" % args[0])
             return(1)
