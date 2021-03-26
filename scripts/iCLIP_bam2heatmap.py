@@ -336,6 +336,7 @@ def main(argv=None):
     sorter = sorter.sort_values(ascending=False)
     sorted_matrix = normalized_matrix.loc[sorter.index.values]
 
+
     compress_matrix = iCLIP.compress_matrix(sorted_matrix,
                                             ncols=options.width,
                                             nrows=options.height)
@@ -383,8 +384,9 @@ def main(argv=None):
         cols = R["colorRampPalette"](c("white", "blue"))(50)
         bases = renormalized_matrix.columns.values.astype("int")
         groups = renormalized_matrix.index.values.astype("int")
-        mat = renormalized_matrix.as_matrix()
-        mat[mat >= 1] = 1
+        mat = renormalized_matrix.values
+        if options.normalize != "none" or options.renormalise != "none":
+            mat[mat >= 1] = 1
 
         R.image(bases, groups, R.t(mat),
                 zlim=c(0, 1),
