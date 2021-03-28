@@ -385,7 +385,7 @@ def main(argv=None):
         bases = renormalized_matrix.columns.values.astype("int")
         groups = renormalized_matrix.index.values.astype("int")
         mat = renormalized_matrix.values
-        if options.normalize != "none" or options.renormalise != "none":
+        if options.normalize != "none" or options.renormalize != "none":
             mat[mat >= 1] = 1
 
         R.image(bases, groups, R.t(mat),
