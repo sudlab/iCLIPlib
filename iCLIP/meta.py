@@ -387,13 +387,13 @@ def compress_matrix(matrix, nrows=None, ncols=None):
         .
     '''
 
-    if ncols:
+    if ncols and not ncols == matrix.shape[1]:
         groups, bins = pd.cut(matrix.columns.values, ncols,
                               retbins=True, labels=False)
         groups = bins[groups]
         matrix = matrix.groupby(groups, axis=1).mean()
 
-    if nrows:
+    if nrows and not nrows == matrix.shape[0]:
         groups = pd.cut(range(matrix.shape[0]), nrows, labels=False)
         matrix = matrix.groupby(groups).mean()
 

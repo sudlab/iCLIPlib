@@ -336,7 +336,6 @@ def main(argv=None):
     sorter = sorter.sort_values(ascending=False)
     sorted_matrix = normalized_matrix.loc[sorter.index.values]
 
-
     compress_matrix = iCLIP.compress_matrix(sorted_matrix,
                                             ncols=options.width,
                                             nrows=options.height)
