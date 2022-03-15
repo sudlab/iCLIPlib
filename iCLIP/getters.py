@@ -4,6 +4,8 @@ import collections
 from functools import partial
 from bx.bbi.bigwig_file import BigWigFile
 import pysam
+from cgatcore import experiment as E
+
 profile = collections.namedtuple("profile", ["centre",
                                              "read_end",
                                              "use_read_end",
@@ -59,7 +61,15 @@ profiles = {"iclip": profile(centre=False,
                             reverse_direction=False,
                             offset=-1,
                             filter_end="none",
-                            use_mismatches=True)}
+                            use_mismatches=True),
+            "quant_seq_polyA": profile(centre=False,
+                            read_end=False,
+                            use_read_end=True,
+                            use_deletions=False,
+                            reverse_direction=False,
+                            offset=0,
+                            filter_end="read1",
+                            use_mismatches=False)}
 
 
 def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
