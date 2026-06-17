@@ -1,14 +1,14 @@
 '''This file contains functions and classes relating to calling iCLIP
 clusters'''
 
-import CGAT.Experiment as E
+import cgatcore.experiment as E
 import numpy as np
 import pandas as pd
-import CGAT.GTF as GTF
+import cgat.GTF as GTF
 
-from utils import spread, rand_apply, TranscriptCoordInterconverter
-from counting import count_transcript, count_intervals
-from kmers import LiteExon
+from .utils import spread, rand_apply, TranscriptCoordInterconverter
+from .counting import count_transcript, count_intervals
+from .kmers import LiteExon
 
 
 def Ph(profile, exon, nspread):
@@ -47,13 +47,8 @@ def fdr(profile, exon, nspread, randomizations):
     fdr_thresholds = (muh + sigmah) / profile_Ph
     spread_profile = spread(profile, nspread)
     fdrs = spread_profile.map(fdr_thresholds)
-    try:
-        fdrs = fdrs.loc[profile.index]
-    except KeyError:
-        print profile.index
-        print spread_profile.index
-        print fdrs.index
-        raise
+    fdrs = fdrs.loc[profile.index]
+
     fdrs = fdrs.reindex(profile.index)
     return fdrs
 
@@ -143,7 +138,7 @@ def get_crosslink_fdr_by_randomisation(gtf_iterator, bam,
     guarenteed.
 
         :param gtf_iterator: An iterator that returns listss of
-                             CGAT.GTF.Entry
+                             cgat.GTF.Entry
         :type bam: pysam.AlignmentFile
         :param pool: If a worker pool is provided work will be
                      parallelised accross the pool

@@ -57,7 +57,7 @@ Command line options
 
 import sys
 import pysam
-import CGAT.Experiment as E
+import cgatcore.experiment as E
 import numpy as np
 import collections
 import pandas as pd
@@ -98,7 +98,7 @@ def main(argv=None):
                        default=None)
         
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     samfiles = [pysam.Samfile(fn, 'rb') for fn in args]
 #    total_counter = [E.Counter() for samfile in samfiles]
@@ -109,13 +109,13 @@ def main(argv=None):
                          for x in range(len(args) - 1)]
                     for sf in args}
 
-    contigs = zip(samfiles[0].references, samfiles[0].lengths)
+    contigs = list(zip(samfiles[0].references, samfiles[0].lengths))
     
     if options.track:
-        use_index, use_names = zip(*[(i,fn) for i,fn in enumerate(args)
-                               if fn == options.track])
+        use_index, use_names = list(zip(*[(i,fn) for i,fn in enumerate(args)
+                               if fn == options.track]))
     else:
-        use_index, use_names = zip(*enumerate(args))
+        use_index, use_names = list(zip(*enumerate(args)))
 
     if options.contig:
         contigs = [x for x in contigs if x[0] == options.contig]
@@ -170,7 +170,7 @@ def main(argv=None):
                     running_totals[args[sf]][i][n] += sites.sum()
                 
                 replicating_sites = \
-                    depths.ix[sites, np.arange(len(samfiles)) != sf] > 0
+                    depths.loc[sites, np.arange(len(samfiles)) != sf] > 0
                 n_replicating_samples = replicating_sites.sum(axis=1)
 
                 for i in range(len(args) - 1):
@@ -197,7 +197,7 @@ def main(argv=None):
     options.stdout.write(outlines)
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

@@ -37,9 +37,9 @@ Command line options
 
 import sys
 import os
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
-from CGAT.IndexedFasta import IndexedFasta, getConverter
+import cgatcore.experiment as E
+import cgat.GTF as GTF
+from cgat.IndexedFasta import IndexedFasta, getConverter
 import pysam
 
 sys.path.insert(1, os.path.join(
@@ -101,7 +101,7 @@ def main(argv=None):
 
     
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     if options.proc:
         try:
@@ -145,7 +145,7 @@ def main(argv=None):
 
     results.to_csv(options.stdout, header=True, index_label="Kmer", sep="\t")
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

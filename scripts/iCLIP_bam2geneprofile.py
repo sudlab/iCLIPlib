@@ -47,9 +47,9 @@ Command line options
 
 import sys
 import os
-import CGAT.Experiment as E
+import cgatcore.experiment as E
 import pysam
-import CGAT.IOTools as IOTools
+import cgatcore.iotools as iotools
 
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
@@ -108,7 +108,7 @@ def main(argv=None):
                       help="Do not normalise profile from each gene")
     
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     if options.plus_wig:
         bam = iCLIP.make_getter(plus_wig=options.plus_wig,
@@ -137,8 +137,12 @@ def main(argv=None):
         row_norm=options.row_norm)
 
     if options.flanks > 0:
-        summed_matrix = summed_matrix[["flank5", "exons", "flank3"]]
-
+        try:
+            summed_matrix = summed_matrix[["flank5", "exons", "flank3"]]
+        except KeyError:
+            print (summed_matrix)
+            print(counts_matrix)
+            raise 
     summed_matrix = summed_matrix.reset_index()
     if options.normalize_profile:
         summed_matrix["density"] = summed_matrix["density"]/summed_matrix["density"].sum()
@@ -154,13 +158,13 @@ def main(argv=None):
         counts_matrix = counts_matrix.reset_index(drop=True)
         counts_matrix = counts_matrix.transpose()
 
-        counts_matrix.to_csv(IOTools.openFile(options.matrix, "w"),
+        counts_matrix.to_csv(iotools.open_file(options.matrix, "w"),
                              sep="\t",
                              index=True,
                              index_label="transcript_id")
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

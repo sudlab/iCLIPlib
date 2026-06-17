@@ -47,11 +47,11 @@ Command line options
 import sys
 import os
 import shutil
-import CGAT.Experiment as E
+import cgatcore.experiment as E
 import pysam
 import subprocess
 import tempfile
-import CGAT.IOTools as IOTools
+import cgatcore.iotools as iotools
 import pandas as pd
 
 sys.path.insert(1, os.path.join(
@@ -84,7 +84,7 @@ def outputToBG(depths,chrom, chrom_size, bgfile):
     text and writes it to the specified file '''
 
     depths.index = depths.index
-    for row in depths.iteritems():
+    for row in depths.items():
         row = list(row)
         if row[0] <= 0 or row[0] >= chrom_size-1:
             continue
@@ -93,7 +93,7 @@ def outputToBG(depths,chrom, chrom_size, bgfile):
                                  int(row[0]),
                                  int(row[0])+1,
                                  row[1]])) + "\n"
-        bgfile.write(row)
+        bgfile.write(row.encode())
 
 def output2Bed(pos_depth, neg_depth, chrom, outfile):
 
@@ -129,7 +129,7 @@ def main(argv=None):
     if argv is None:
         argv = sys.argv
 
-    profiles = iCLIP.getters.profiles.keys()
+    profiles = list(iCLIP.getters.profiles.keys())
     # setup command line parser
     parser = E.OptionParser(version="%prog version: $Id$",
                             usage=globals()["__doc__"])
@@ -163,7 +163,7 @@ def main(argv=None):
                       help="Normalize output depths to number of mapped reads (in millions) in BAM")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     options.format = options.format.lower()
     if options.format == "bg":
@@ -193,7 +193,7 @@ def main(argv=None):
         scale_factor = 1000000.0/scale_factor
 
     if options.format == "bed":
-        bedfile = IOTools.openFile(args[0], "w")
+        bedfile = iotools.open_file(args[0], "w")
     else:
         plus_wig = tempfile.NamedTemporaryFile(delete=False)
         minus_wig = tempfile.NamedTemporaryFile(delete=False)
@@ -251,7 +251,7 @@ def main(argv=None):
         chrom_sizes_file = tempfile.NamedTemporaryFile(delete=False, dir=".")
         contig_sizes = ["\t".join(map(str,row)) for row in contig_sizes]
         contig_sizes = "\n".join(contig_sizes) + "\n"
-        chrom_sizes_file.write(contig_sizes)
+        chrom_sizes_file.write(contig_sizes.encode())
         chrom_sizes_filename = chrom_sizes_file.name
         chrom_sizes_file.close()
 
@@ -260,7 +260,7 @@ def main(argv=None):
 
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 
 if __name__ == "__main__":

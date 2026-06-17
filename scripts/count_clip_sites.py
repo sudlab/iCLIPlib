@@ -40,9 +40,9 @@ Command line options
 '''
 
 import sys
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
-import CGAT.Intervals as Intervals
+import cgatcore.experiment as E
+import cgat.GTF as GTF
+import cgat.Intervals as Intervals
 import os
 import pysam
 
@@ -59,6 +59,8 @@ def main(argv=None):
 
     if argv is None:
         argv = sys.argv
+    
+    profiles = list(iCLIP.getters.profiles.keys())
 
     # setup command line parser
     parser = E.OptionParser(version="%prog version: $Id$",
@@ -79,9 +81,15 @@ def main(argv=None):
     parser.add_option("-c", "--use-centre", dest="centre", action="store_true",
                       default=False,
                       help="Use centre of read rather than start")
+    parser.add_option("-p", "--profile", dest="profile", type="choice",
+                      choices=profiles,
+                      default="iclip",
+                      help="Experiment profile to use. Sets various things"
+                      "about obtaining 1-bp position from read. Options are"
+                      " %s" % ", ".join(profiles))
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     iterator = GTF.iterator(options.stdin)
 
@@ -106,7 +114,9 @@ def main(argv=None):
     elif options.bedfile:
         bamfile = iCLIP.make_getter(bedfile=options.bedfile)   
     else:
-        bamfile = pysam.AlignmentFile(args[0])
+        bamfile = iCLIP.make_getter(bamfile=pysam.AlignmentFile(args[0]),
+                                    centre=options.centre,
+                                    profile=options.profile)
         
     outlines = []
     for feature in iterator:
@@ -116,8 +126,7 @@ def main(argv=None):
                                             exons,
                                             feature[0].contig,
                                             feature[0].strand,
-                                            dtype="uint32",
-                                            use_centre=options.centre)
+                                            dtype="uint32")
 
         exon_counts = exon_counts.sum()
 
@@ -126,8 +135,7 @@ def main(argv=None):
                                               introns,
                                               feature[0].contig,
                                               feature[0].strand,
-                                              dtype="uint32",
-                                              use_centre=options.centre)
+                                              dtype="uint32")
 
         intron_counts = intron_counts.sum()
 
@@ -135,7 +143,7 @@ def main(argv=None):
 
             try:
                 exon_id = feature[0].exon_id
-            except AttributeError:
+            except KeyError:
                 try:
                     exon_id = feature[0].exon_number
                 except AttributeError:
@@ -167,7 +175,7 @@ def main(argv=None):
     options.stdout.write(outlines + "\n")
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

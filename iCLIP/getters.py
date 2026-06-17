@@ -6,40 +6,60 @@ from bx.bbi.bigwig_file import BigWigFile
 import pysam
 profile = collections.namedtuple("profile", ["centre",
                                              "read_end",
+                                             "use_read_end",
                                              "use_deletions",
                                              "reverse_direction",
                                              "offset",
-                                             "filter_end"])
+                                             "filter_end",
+                                             "use_mismatches"])
 profiles = {"iclip": profile(centre=False,
                              read_end=False,
+                             use_read_end=True,
                              use_deletions=True,
                              reverse_direction=False,
                              offset=-1,
-                             filter_end="none"),
+                             filter_end="none",
+                             use_mismatches=False),
             "eclip": profile(centre=False,
                              read_end=False,
+                             use_read_end=True,
                              use_deletions=True,
                              reverse_direction=False,
                              offset=-1,
-                             filter_end="read2"),
+                             filter_end="read2",
+                             use_mismatches=False),
             "iclip-centre":  profile(centre=True,
                                      read_end=False,
+                                     use_read_end=True,
                                      use_deletions=True,
                                      reverse_direction=False,
                                      offset=-1,
-                                     filter_end="read1"),
+                                     filter_end="read1",
+                                     use_mismatches=False),
             "mNETseq-read1":  profile(centre=False,
                                       read_end=True,
+                                      use_read_end=True,
                                       use_deletions=False,
                                       reverse_direction=False,
                                       offset=0,
-                                      filter_end="read1"),
+                                      filter_end="read1",
+                                      use_mismatches=False),
             "mNETseq-read2": profile(centre=False,
                                      read_end=False,
+                                     use_read_end=True,
                                      use_deletions=False,
                                      reverse_direction=True,
                                      offset=0,
-                                     filter_end="read2")}
+                                     filter_end="read2", 
+                                     use_mismatches=False),
+            "CRAC": profile(centre=False,
+                            read_end=False,
+                            use_read_end=False,
+                            use_deletions=True,
+                            reverse_direction=False,
+                            offset=-1,
+                            filter_end="none",
+                            use_mismatches=True)}
 
 
 def getter(contig, start=0, end=None, strand=".", dtype="uint16"):
@@ -149,9 +169,9 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
 
 '''
 
-    if isinstance(profile, basestring):
+    if isinstance(profile, str):
         profile = profiles[profile]
-        
+ 
     centre = kwargs.get("centre", profile.centre)
     read_end = kwargs.get("read_end", profile.read_end)
     use_deletions = kwargs.get("use_deletions", profile.use_deletions)
@@ -159,7 +179,9 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
                                    profile.reverse_direction)
     offset = kwargs.get("offset", profile.offset)
     filter_end = kwargs.get("filter_end", profile.filter_end)
-    
+    use_mismatches = kwargs.get("use_mismatches", profile.use_mismatches)
+    use_read_end = kwargs.get("use_read_end", profile.use_read_end)
+      
     if bamfile is not None:
         if not isinstance(bamfile, pysam.AlignmentFile):
             bamfile = pysam.AlignmentFile(bamfile)
@@ -167,11 +189,13 @@ def make_getter(bamfile=None, plus_wig=None, minus_wig=None, bedfile=None,
                        read_end=read_end, use_deletions=use_deletions,
                        reverse_strand=reverse_direction,
                        offset=offset,
-                       filter_end=filter_end)
+                       filter_end=filter_end,
+                       use_mismatches=use_mismatches,
+                       use_read_end=use_read_end)
     elif plus_wig is not None:
-        plus_wig = BigWigFile(open(plus_wig))
+        plus_wig = BigWigFile(open(plus_wig, 'rb'))
         if minus_wig is not None:
-            minus_wig = BigWigFile(open(minus_wig))
+            minus_wig = BigWigFile(open(minus_wig, 'rb'))
 
         return partial(_wig_getter, plus_wig=plus_wig, minus_wig=minus_wig)
     elif bedfile is not None:
@@ -195,20 +219,20 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
                       % (contig, start, end))
 
     if strand == "+" or minus_wig is None:
-        counts = plus_wig.get_as_array(contig, int(start), int(end))
+        counts = plus_wig.get_as_array(contig.encode(), int(start), int(end))
         result = pd.Series(
             counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
  
     elif strand == "-":
-        counts = -1 * minus_wig.get_as_array(contig, start, end)
+        counts = -1 * minus_wig.get_as_array(contig.encode(), start, end)
         result = pd.Series(
             counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
 
     elif strand == ".":
-        plus_counts = plus_wig.get_as_array(contig, start, end)
-        minus_counts = -1 * minus_wig.get_as_array(contig, start, end)
+        plus_counts = plus_wig.get_as_array(contig.encode(), start, end)
+        minus_counts = -1 * minus_wig.get_as_array(contig.encode(), start, end)
         plus_result = pd.Series(
             plus_counts, index=np.arange(start, end, dtype="float")).dropna()
         minus_result = pd.Series(
@@ -220,7 +244,8 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
 ##################################################    
 def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
                 centre=False, read_end=False, use_deletions=True,
-                reverse_strand=False, offset=-1, filter_end=None):
+                reverse_strand=False, offset=-1, filter_end=None,
+                use_mismatches=False, use_read_end=True):
     '''A function to get iCLIP coverage across an interval from a BAM file'''
     chr_len = bamfile.lengths[bamfile.gettid(contig)]
     if end is None:
@@ -241,8 +266,15 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
     elif filter_end == "read2":
         reads = (r for r in reads if not r.is_read1)
         
-    counts = countChr(reads, chr_len, dtype, centre, read_end, use_deletions,
-                      offset)
+    counts = countChr(reads=reads, 
+                      chr_len=chr_len,
+                      dtype=dtype,
+                      centre=centre,
+                      read_end=read_end,
+                      use_deletions=use_deletions,
+                      offset=offset,
+                      use_mismatches=use_mismatches,
+                      use_read_end=use_read_end)
 
     # Two sets of extrainous reads to exlucde: firstly we have pull back
     # reads with a 1bp extra window. Second fetch pulls back overlapping
@@ -314,7 +346,7 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
                 profile[float(base.start)] = 1
                 check_sum += 1
 
-    if len(profile.keys())==0:
+    if len(list(profile.keys()))==0:
         profile = pd.Series(profile, dtype=dtype, index=pd.Index([], dtype="float"))
     else:
         profile = pd.Series(dict(profile), dtype=dtype)
@@ -325,6 +357,7 @@ def _bed_getter(bedfile, contig, start=0, end=None, strand=".", dtype="uint16"):
     #                        % (check_sum, profile.sum()))
 
     return profile
+ 
  
 def find_first_deletion(cigar):
     '''Find the position of the the first deletion in a
@@ -355,7 +388,14 @@ def find_first_deletion(cigar):
 
 
 ##################################################
-def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=-1):
+def getCrosslink(read, 
+                 centre=False,
+                 read_end=False,
+                 use_deletions=True,
+                 offset=-1,
+                 use_read_end=True,
+                 use_mismatches=False
+                 ):
     '''Finds the crosslinked base from a pysam read.
 
     Parameters
@@ -368,11 +408,22 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
     use_deletions : bool
         If a deletion is present in the gene, use it as the crosslinks
         base. 
+    use_mismatches: bool
+        If a mismatch is present in the read, use it as the crosslinked
+        base
+    use_read_end: bool
+        Use one end of the read or the other. 
+    offset: int
+        How much to offset the returned base from the end of the read:
+        if we are using the 5' end of the read, then for iCLIP, you want
+        the base before the end of the read.
              
     Returns
     -------
     int 
-         Position of crosslink in 0-based genome coordinates.
+         Position of crosslink in 0-based genome coordinates. Will return
+         None if configured not to use read end and there are no deletions
+         and/or mismatches. 
          
     Notes
     -----
@@ -402,11 +453,42 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
     reverse_direction = (read.is_reverse and not read_end) or \
                         (not read.is_reverse and read_end)
     
-    if  not use_deletions or 'D' not in read.cigarstring:
+    pos = None
+    if use_mismatches:
+        try:
+            NM = read.get_tag("NM")
+        except KeyError:
+            NM = 0
+    
+    if  use_deletions and 'D' in read.cigarstring: 
 
+        if read.is_reverse:
+            cigar = reversed(read.cigar)
+            position = find_first_deletion(cigar)
+            pos = read.aend - position - 1
+
+        else:
+            position = find_first_deletion(read.cigar)
+            pos = read.pos + position
+
+    elif use_mismatches and NM>0:
+
+        ref_seq = read.get_aligned_pairs(with_seq=True)
+        if read.is_reverse:
+            ref_seq = reversed(ref_seq)
+
+        for base in ref_seq:
+            #mismatches are lowercase
+            if base[1] is None:
+                continue
+            if base[2].islower():
+                pos = base[1]
+                break
+
+    elif use_read_end:
         if centre:
             reference_bases = read.get_reference_positions(full_length=True)
-            i = len(reference_bases)/2
+            i = int(len(reference_bases)/2)
             while reference_bases[i] is None and i > 0:
                 i = i -1
             return reference_bases[i]
@@ -417,22 +499,14 @@ def getCrosslink(read, centre=False, read_end=False, use_deletions=True, offset=
         else:
             pos = read.pos + offset
 
-    else:
-        if read.is_reverse:
-            cigar = reversed(read.cigar)
-            position = find_first_deletion(cigar)
-            pos = read.aend - position - 1
-
-        else:
-            position = find_first_deletion(read.cigar)
-            pos = read.pos + position
-
     return pos
 
 
 ##################################################
 def countChr(reads, chr_len, dtype='uint16', centre=False,
-             read_end=False, use_deletions=True, offset=-1):
+             read_end=False, use_deletions=True, offset=-1,
+             use_mismatches=False, use_read_end=True
+             ):
     ''' Counts the crosslinked bases for each provided read.
 
     Scans through the provided pysam.rowiterator reads and tallys the
@@ -482,9 +556,18 @@ def countChr(reads, chr_len, dtype='uint16', centre=False,
 
     for read in reads:
         
-        pos = getCrosslink(read, centre, read_end, use_deletions, offset)
-        counter += 1
+        pos = getCrosslink(read, 
+                           centre=centre,
+                           read_end=read_end,
+                           use_deletions=use_deletions,
+                           offset=offset,
+                           use_mismatches=use_mismatches,
+                           use_read_end=use_read_end)
+        if pos is None:
+            continue
 
+        counter += 1
+        
         if read.is_reverse:
             neg_depths[float(pos)] += 1
         else:
@@ -503,9 +586,9 @@ def countChr(reads, chr_len, dtype='uint16', centre=False,
     # check for integer overflow: counter sum should add up to array sum
     array_sum = pos_depths.sum() + neg_depths.sum()
     if not counter == array_sum:
-        raise (ValueError(
+        raise ValueError(
                "Sum of depths is not equal to number of "
-               "reads counted, possibly dtype %s not large enough" % dtype))
+               "reads counted, possibly dtype %s not large enough" % dtype)
     
 #    E.debug("Counted %i truncated on positive strand, %i on negative"
 #            % (counter.truncated_pos, counter.truncated_neg))

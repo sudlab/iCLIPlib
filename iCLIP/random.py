@@ -150,7 +150,7 @@ def ratio_and_ci(test, control, quantiles=(0.025, 0.975), bootstraps=1000):
                    control="control")
     ratio = count_ratio(x, "test", "control")
     try:
-        results={"q%s" % q: x for q, x in x_ci.iteritems()}
+        results={"q%s" % q: x for q, x in x_ci.items()}
     except AttributeError:
         results = {"q%s" % quantiles: x_ci}
 

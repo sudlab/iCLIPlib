@@ -7,10 +7,10 @@ such profiles.
 
 import numpy as np
 import pandas as pd
-import CGAT.GTF as GTF
+import cgat.GTF as GTF
 
-from counting import count_transcript
-from counting import count_intervals
+from .counting import count_transcript
+from .counting import count_intervals
 
 
 ##################################################
@@ -36,7 +36,7 @@ def bin_counts(counts, length, nbins):
     """
 
     bins = np.linspace(0, length, num=nbins+1, endpoint=True)
-    if isinstance(counts.index, pd.core.index.MultiIndex):
+    if isinstance(counts.index, pd.core.indexes.multi.MultiIndex):
         bases = counts.index.droplevel()
     else:
         bases = counts.index
@@ -127,7 +127,7 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
         if flanks > 0:
             length_lookup["exons"] = length
 
-            binned_counts = counts.groupby(level=0).apply(
+            binned_counts = counts.groupby(level=0, dropna=False).apply(
                 lambda x: bin_counts(x, length_lookup[x.name],
                                      nbins_lookup[x.name]))
         else:
@@ -138,6 +138,7 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
         counts_collector.append(binned_counts)
 
     counts_matrix = pd.concat(counts_collector, axis=1)
+
     counts_matrix = counts_matrix.transpose()
 
     counts_matrix = counts_matrix.fillna(0)
@@ -302,7 +303,9 @@ def get_binding_matrix(bamfile,
         matrix.append(counts)
 
     matrix = pd.concat(matrix, axis=1)
-    matrix = matrix.reindex(range(-1*(left_margin/25)*25, (right_margin/25)*25, bin_size),
+    matrix = matrix.reindex(range(-1*(left_margin//25)*25, 
+                                  (right_margin//25)*25,
+                                   bin_size),
                             fill_value = 0)
     matrix = matrix.T.fillna(0)
 
@@ -384,13 +387,13 @@ def compress_matrix(matrix, nrows=None, ncols=None):
         .
     '''
 
-    if ncols:
+    if ncols and not ncols == matrix.shape[1]:
         groups, bins = pd.cut(matrix.columns.values, ncols,
                               retbins=True, labels=False)
         groups = bins[groups]
         matrix = matrix.groupby(groups, axis=1).mean()
 
-    if nrows:
+    if nrows and not nrows == matrix.shape[0]:
         groups = pd.cut(range(matrix.shape[0]), nrows, labels=False)
         matrix = matrix.groupby(groups).mean()
 

@@ -67,7 +67,7 @@ iCLIP_bam2geneprofile_centre:
     stdin: geneset.gtf.gz
     outputs: [stdout]
     references: [gene_profile_centre.tsv]
-    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --centre
+    options: iCLIP_bam2geneprofile.py %DIR%/SRSF7-Chr1-R1.bam -L /dev/null --use-centre
 
 iCLIP_bam2geneprofile_nonorm:
     stdin: geneset.gtf.gz

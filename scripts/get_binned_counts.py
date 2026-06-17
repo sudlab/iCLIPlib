@@ -34,7 +34,7 @@ Command line options
 
 import sys
 import os
-import CGAT.Experiment as E
+import cgatcore.experiment as E
 import pysam
 import numpy
 
@@ -65,14 +65,14 @@ def main(argv=None):
     parser.add_option("--dtype", dest="dtype", default = "uint32")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     try:
         samfile = pysam.Samfile(args[0], "rb")
     except IndexError:
         raise ValueError("Please supply a BAM file as the first arguement")
 
-    contigs = zip(samfile.references, samfile.lengths)
+    contigs = list(zip(samfile.references, samfile.lengths))
     if options.contig:
         contigs = [x for x in contigs if x[0] == options.contig]
 
@@ -101,14 +101,14 @@ def main(argv=None):
                               ".", str(int(score)), strand])
 
 
-        for bin, score in pos_bin_sums.iteritems():
+        for bin, score in pos_bin_sums.items():
             options.stdout.write(_score2bed(bin, score, "+") + "\n")
 
-        for bin, score in neg_bin_sums.iteritems():
+        for bin, score in neg_bin_sums.items():
             options.stdout.write(_score2bed(bin, score, "-") + "\n")
         
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

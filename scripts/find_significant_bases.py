@@ -113,13 +113,13 @@ import pandas as pd
 import numpy as np
 import sys
 import os
-import CGAT.Experiment as E
-import CGAT.GTF as GTF
-import CGAT.IOTools as IOTools
+import cgatcore.experiment as E
+import cgat.GTF as GTF
+import cgatcore.iotools as iotools
 import pysam
 from statsmodels.stats.multitest import multipletests
-import CGAT.Intervals as Intervals
-import CGAT.Bed as Bed
+import cgat.Intervals as Intervals
+import cgat.Bed as Bed
 
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
@@ -136,7 +136,7 @@ def get_windows(pvalues, window_size, threshold):
     merged_windows = Intervals.combine(windows)
     windows_min_p = [pvalues.ix[float(start):float(end-1)].min()
                     for start, end in merged_windows]
-    return zip(merged_windows, windows_min_p)
+    return list(zip(merged_windows, windows_min_p))
 
 
 def windows2bed12(windows, contig, strand, name, score):
@@ -222,15 +222,12 @@ def bases_to_windows(pvalues, gene, window_size, threshold):
                               for (start, end), p in intron_windows]
             windows.extend([([window],p) for window,p in intron_windows])
         
-        try:
-            outlist.extend(
-                [windows2bed12(window, contig, transcript[0].strand,
-                               "%s_%s" % (transcript[0].transcript_id, n),
-                               score=p)
-                 for n, (window,p) in enumerate(windows)])
-        except:
-            print [x for x in enumerate(windows)]
-            raise
+        outlist.extend(
+            [windows2bed12(window, contig, transcript[0].strand,
+                           "%s_%s" % (transcript[0].transcript_id, n),
+                            score=p)
+             for n, (window,p) in enumerate(windows)])
+
         assert not any([bed.end - bed.start < 1 for bed in outlist])
 
     return sorted(outlist, key=lambda x: x.start)
@@ -383,8 +380,8 @@ def calculateProbabilities(counts, window_size, length, start=0):
         try:
             window = counts[window_start[i]:window_end[i]]
         except KeyError:
-            print (window_start, window_end)
-            print counts
+            print((window_start, window_end))
+            print(counts)
   
         heights[i] = window.sum()
        
@@ -447,7 +444,7 @@ parses command line options in sys.argv, unless *argv* is given.
                       "mutaiton is present")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     # Standard in contains the transcripts
     
@@ -458,7 +455,7 @@ parses command line options in sys.argv, unless *argv* is given.
 
     if options.output_both:
         outfile_bases = options.stdout
-        outfile_windows = IOTools.openFile(options.output_both, "w")
+        outfile_windows = iotools.open_file(options.output_both, "w")
     elif options.output_windows:
         outfile_bases = None
         outfile_windows = options.stdout
@@ -577,7 +574,7 @@ parses command line options in sys.argv, unless *argv* is given.
     output.close()
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

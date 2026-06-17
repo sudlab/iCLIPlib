@@ -55,9 +55,9 @@ import sys
 import pysam
 import os
 
-import CGAT.Experiment as E
-from CGAT import GTF
-from CGAT import Bed
+import cgatcore.experiment as E
+from cgat import GTF
+from cgat import Bed
 
 sys.path.insert(1, os.path.join(
     os.path.dirname(__file__), ".."))
@@ -103,7 +103,7 @@ def main(argv=None):
                            " of cleavage site. [%default]")
 
     # add common options (-h/--help, ...) and parse command line
-    (options, args) = E.Start(parser, argv=argv)
+    (options, args) = E.start(parser, argv=argv)
 
     try:
         bamfile = pysam.AlignmentFile(args[0])
@@ -128,7 +128,7 @@ def main(argv=None):
     options.stdout.write("Processing Index\t%s\t%s\n" % (args[0], pi))
 
     # write footer and output benchmark information.
-    E.Stop()
+    E.stop()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
