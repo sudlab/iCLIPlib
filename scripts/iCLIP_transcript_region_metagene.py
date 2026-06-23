@@ -1,6 +1,6 @@
 '''
-iCLIP_bam2geneprofile.py - produce geneprofile of iCLIP sites
-============================================================
+iCLIP_transcript_region_metagene.py - produce metagene profiles by transcript region
+====================================================================================
 
 :Author:
 :Release: $Id$
@@ -10,33 +10,31 @@ iCLIP_bam2geneprofile.py - produce geneprofile of iCLIP sites
 Purpose
 -------
 
-While bam2geneprofile in CGAT is a very flexible tool, it is not
-neccesarily suitable for iCLIP as we should only consider the first
-base (or any mutant bases).
+This script produces metagene profiles of iCLIP sites across various transcript regions
+(5' UTR, CDS, 3' UTR, exons, introns, etc.). It wraps iCLIP.meta to compute normalized 
+profiles across user-defined regions and bins.
 
-This script wraps iCLIP.meta_gene to produce metagene profiles of
-iCLIP bam files. It can also use bigwig files - provide either unstranded
-data to `--plus-wig` or stranded data by also using `--minus-wig`.
+The script accepts BAM files, BED files, or BigWig files as input and produces 
+metagene profiles normalized by gene. It can optionally output the full matrix 
+for custom normalization and supports stranded data analysis.
 
 Profiles are always normalised to the sum of each window before summing 
-accross windoes, but the full matrix may also be output if custom normalisation
+across windows, but the full matrix may also be output if custom normalisation
 is required.
 
-Using single bases means we don't have to worry about over sampling single
-reads, so profiles should be less resolution sensitive
+Using single bases means we don't have to worry about over-sampling single
+reads, so profiles should be less resolution sensitive.
 
 Usage
 -----
 
-.. Example use case
-
 Example::
 
-   python iCLIP_bam2geneprofile.py -I geneset.gtf.gz mybam.bam
+   python iCLIP_transcript_region_metagene.py -I geneset.gtf.gz mybam.bam
 
 Type::
 
-   python iCLIP_bam2geneprofile.py --help
+   python iCLIP_transcript_region_metagene.py --help
 
 for command line help.
 
@@ -73,7 +71,9 @@ regions_dict = {'5flank': transcript_regions.flank5,
                 'introns': transcript_regions.introns,
                 'primary': transcript_regions.primary_transcript,
                 'tss': transcript_regions.tss,
-                'tts': transcript_regions.tts}
+                'tts': transcript_regions.tts,
+                'exon_3_prime_end': transcript_regions.exon_3_prime_end,
+                'exon_5_prime_end': transcript_regions.exon_5_prime_end}
 
 default_bins = {'5flank': 100,
                 '3flank': 100,
@@ -87,7 +87,9 @@ default_bins = {'5flank': 100,
                 'introns': 100,
                 'primary': 100,
                 'tss': 200,
-                'tts': 100}
+                'tts': 100,
+                'exon_3_prime_end': 100,
+                'exon_5_prime_end': 100}
 
 def main(argv=None):
     """script main.
@@ -126,7 +128,7 @@ def main(argv=None):
     parser.add_option("--bed", dest="bedfile", default=None,
                       help="Use bed file with signal instead of bam")
     parser.add_option("--centre", dest="centre", action="store_true",
-                      default=False,
+                      default=None,
                       help="Use centre of read rather than end")
     parser.add_option("--no-gene-norm", dest="row_norm", action="store_false",
                       default=True,
@@ -144,10 +146,21 @@ def main(argv=None):
                       help="Bins to use. If not specified defaults for the"
                       "chosen regions will be used")
     parser.add_option("-p", "--profile", dest="profile", type="choice",
+                      default="iclip",
                       choices=list(iCLIP.getters.profiles.keys()),
                       help="Read profile for the experiment. Choose from %s"
                       % ", ".join(iCLIP.getters.profiles.keys()))
-    
+    parser.add_option("--splice-flank", dest="splice_flank", type="int",
+                      default=100,
+                      help="Number of bases to include in splice flanks for exon end regions")
+    parser.add_option("--aggregate-by", dest="aggregate_by", type="choice",
+                      choices=["transcript", "feature"],
+                      default="transcript",
+                      help="Aggregate by transcript or feature. If feature is chosen, "
+                      "the profile will be computed for each feature and then summed across features. "
+                      "If transcript is chosen, the profile will be computed for each transcript and "
+                      "then summed across transcripts. Default: transcript")
+   
     # add common options (-h/--help, ...) and parse command line
     (options, args) = E.start(parser, argv=argv)
 
@@ -157,6 +170,9 @@ def main(argv=None):
     elif options.bedfile:
         bam = iCLIP.make_getter(bedfile=options.bedfile)
     else:
+        if options.centre is None:
+            options.centre = iCLIP.getters.profiles[options.profile].centre
+
         bam = iCLIP.make_getter(bamfile=args[0], profile=options.profile, centre=options.centre)
 
     regions_dict['5flank'] = partial(regions_dict['5flank'],
@@ -169,7 +185,11 @@ def main(argv=None):
     regions_dict['tts'] = partial(regions_dict['tts'],
                                   upstream=options.flanks,
                                   downstream=options.flanks)
-
+    regions_dict['exon_3_prime_end'] = partial(regions_dict['exon_3_prime_end'],
+                                                upstream=options.splice_flank)
+    regions_dict['exon_5_prime_end'] = partial(regions_dict['exon_5_prime_end'],
+                                                downstream=options.splice_flank)
+    
     names = options.regions.split(",")
     regions = [regions_dict[r] for r in names]
 
@@ -193,7 +213,8 @@ def main(argv=None):
 
     for transcript in transcript_interator:
         this_profile = transcript_region_meta(transcript, bam, regions, names,
-                                              bins, length_norm=options.rlc)
+                                              bins, length_norm=options.rlc,
+                                              aggregate=options.aggregate_by == "feature")
 
         if options.pseudo_count:
             this_profile = profile.reindex(index, fill_value=0) +\

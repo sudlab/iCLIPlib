@@ -497,10 +497,9 @@ def getCrosslink(read,
 
     elif use_read_end:
         if centre:
-            reference_bases = read.get_reference_positions(full_length=True)
+            
+            reference_bases = read.get_reference_positions()
             i = int(len(reference_bases)/2)
-            while reference_bases[i] is None and i > 0:
-                i = i -1
             return reference_bases[i]
 
         if reverse_direction:

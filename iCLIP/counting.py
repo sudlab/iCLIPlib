@@ -83,11 +83,14 @@ def count_intervals(getter, intervals, contig, strand=".", dtype='uint32',
 
     else:
         for exon in intervals:
-            exon_counts.append(getter(contig=contig,
-                                      start=exon[0],
-                                      end=exon[1],
-                                      strand=strand,
-                                      dtype=dtype))
+            c = getter(contig=contig,
+                        start=exon[0],
+                        end=exon[1],
+                        strand=strand,
+                        dtype=dtype)
+            
+            exon_counts.append(c[exon[0]:(exon[1]-1)])
+            
 
     if len(exon_counts) == 0:
         transcript_counts = pd.Series()
@@ -168,7 +171,7 @@ def count_transcript(transcript, bam, flanks=0):
                              strand=transcript[0].strand)
     
     coords_translator = TranscriptCoordInterconverter(transcript)
-    
+
     counts.index = coords_translator.genome2transcript(counts.index)
 
     if flanks == 0:

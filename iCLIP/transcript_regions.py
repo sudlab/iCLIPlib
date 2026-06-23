@@ -238,3 +238,52 @@ def tts(transcript, upstream=500, downstream=500):
     returned_exon.end = end
     
     return [returned_exon]
+
+def exon_3_prime_end(transcripts, upstream=100):
+    '''Return the `upstream` base pairs 3' of each splice site. The end of the final exon is not included.'''
+
+    exons = [GTF.Entry().fromGTF(e) for e in transcripts if e.feature == "exon"]
+    exons = sorted(exons, key=lambda x: x.start)
+
+    if exons[0].strand == "+":
+        exons = exons[:-1]
+        exons = [e for e in exons if e.end - e.start > upstream]
+        for e in exons:
+            e.start = e.end - upstream
+    else:
+        exons = exons[1:]
+        exons = [e for e in exons if e.end - e.start > upstream]
+        for e in exons:
+            e.end = e.start + upstream
+
+    # test for no exons that are long enough to return othe
+    if len(exons) ==0:
+        return list()
+    
+    return exons
+
+def exon_5_prime_end(transcripts, downstream=100):
+    '''Return the `downstream` base pairs 5' of each splice site. The start of the first exon is not included.'''
+
+    exons = [GTF.Entry().fromGTF(e) for e in transcripts if e.feature == "exon"]
+    exons = sorted(exons, key=lambda x: x.start)
+    
+    if exons[0].strand == "+":
+        exons = exons[1:]
+        exons = [e for e in exons if e.end - e.start > downstream]
+        for e in exons:
+            e.end = e.start + downstream
+            assert e.end - e.start == downstream
+    else:
+        exons = exons[:-1]
+        exons = [e for e in exons if e.end - e.start > downstream]
+        for e in exons:
+            e.start = e.end - downstream
+            assert e.end - e.start == downstream
+
+    # test for no exons that are long enough to return
+    if len(exons) == 0:
+        return list()
+    
+    return exons
+

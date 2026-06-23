@@ -5,9 +5,13 @@ such profiles.
 """
 
 
+import functools
+
 import numpy as np
 import pandas as pd
 import cgat.GTF as GTF
+import time
+import logging
 
 from .counting import count_transcript
 from .counting import count_intervals
@@ -142,8 +146,8 @@ def meta_gene(gtf_filelike, bam, bins=[10, 100, 10], flanks=100,
     counts_matrix = counts_matrix.transpose()
 
     counts_matrix = counts_matrix.fillna(0)
-    counts_matrix[counts_matrix.sum(axis=1)>0] = \
-        counts_matrix[counts_matrix.sum(axis=1)>0] + pseudo_count
+    counts_matrix[counts_matrix.sum(axis=1) > 0] = \
+        counts_matrix[counts_matrix.sum(axis=1) > 0] + pseudo_count
 
     if row_norm:
         counts_matrix = counts_matrix.div(
@@ -175,20 +179,9 @@ def processing_index(interval_iterator, bam, window_size=50):
 
     Returns
     -------
-    int
+    float
         processing index averaged over all processing sites given.
-
-    Notes
-    -----
-    The proccessing index for G genes is defined as:
-
-    .. math::
-
-       pi = log_2( \frac{\sum_{i=1}^{G} N_i^{PM}}{\sum_{i=1}^{G} N_i^M})
-
-    after Baejen et al Mol Cell 5(55):745-757. However, Beaejen et al
-    normalise this number to the total number of genes, which seems
-wrong to me. '''
+    '''
 
     n_pm = 0
     n_m = 0
@@ -426,31 +419,141 @@ def get_window(profile, position, upstream, downstream):
     return window
 
 
-def transcript_region_meta(transcript, getter, regions, names, bins, length_norm=True):
-    
-    region_exons = [region_fun(transcript) for region_fun in regions]
-    
-    region_lengths = [sum(x.end - x.start for x in r) for r in region_exons]
-    region_exons = [r for r, l in zip(region_exons, region_lengths) if l > 0]
-    region_lengths = [l for l in region_lengths if l > 0]
-    bins = [b for b, l in zip(bins, region_lengths) if l > 0]
-    valid_names = [n for n, l in zip(names, region_lengths) if l > 0]
-    
-    region_counts = [count_transcript(t, getter) for t in region_exons]
-    region_binned_counts = [bin_counts(c, l, b) for c, l, b in
-                            zip(region_counts, region_lengths, bins)]
-    if length_norm:
-        region_binned_counts = [x*b/l for x, l, b in zip(region_binned_counts,
-                                                         region_lengths,
-                                                         bins)]
+def transcript_region_meta(transcript, getter, regions, names, bins, length_norm=True, aggregate=False):
+    '''Return a profile of binding across a transcript, divided into
+    specified regions. Each region is divided into the specified number of bins,
+    and the counts in each bin are summed. If `aggregate` is True,
+    then each exon within a region is binned separately and counts across all
+    exons in that region are summed.
 
-    try:
-        profile = pd.concat(region_binned_counts, keys=valid_names,
-                            names=["region", "region_bin"])
-                    
-    except ValueError:
-        if len(region_binned_counts) == 0:
-            profile = pd.concat([pd.Series([]), pd.Series([])], keys=names,
-                            names=["region", "region_bin"])
-        
+    If a region has no length, it will be excluded from the output profile. If
+    all regions have no length, an empty profile with the correct MultiIndex
+    will be returned to enable safe concatenation with other profiles.
+    '''
+
+    # basic validation
+    if not (len(names) == len(regions) == len(bins)):
+        raise ValueError("names, regions and bins must be same length")
+
+    logger = logging.getLogger(__name__)
+    t_start = time.perf_counter()
+    t_count = 0.0
+    n_regions_processed = 0
+    n_exons_processed = 0
+
+    # get the exon lists for each region
+    region_exons = [region_fun(transcript) for region_fun in regions]
+    region_lengths = [sum(x.end - x.start for x in r) for r in region_exons]
+
+    # keep only regions with positive length and preserve name/bin alignment
+    filtered = [(r, l, n, b) for r, l, n, b in zip(region_exons, region_lengths, names, bins) if l > 0]
+
+    # prepare collectors
+    region_binned_counts = []
+    valid_names = []
+
+    if aggregate:
+        from functools import reduce
+        # For each region, fetch counts for all exons with a single call to
+        # count_intervals (which itself fetches once) and then split per exon.
+        for r, l, n, b in filtered:
+            if len(r) == 0:
+                continue
+
+            n_regions_processed += 1
+            exon_profiles = []
+
+            # Fetch counts for the whole block covering the region exons in one go
+            intervals = [(e.start, e.end) for e in r]
+            intervals.sort(key=lambda x: x[0])  # sort by start position
+            
+            t0 = time.perf_counter()
+            all_exon_counts = count_intervals(getter, intervals, contig=transcript[0].contig, strand=transcript[0].strand)
+            t1 = time.perf_counter()
+            t_count += (t1 - t0)
+
+            # Vectorized binning: map genome positions to exon indices and bin indices
+            exon_starts = np.array([e.start for e in r], dtype=float)
+            exon_ends = np.array([e.end for e in r], dtype=float)
+            exon_lens = exon_ends - exon_starts
+            n_exons = len(r)
+
+            if all_exon_counts.sum() == 0:
+                # no counts; produce zero bins
+                region_bins = np.zeros(b, dtype=float)
+
+            else:
+                positions = np.asarray(all_exon_counts.index.values, dtype=float)
+                values = np.asarray(all_exon_counts.values, dtype=float)
+
+                # map positions to exon indices using pandas IntervalIndex
+                intervals_index = pd.IntervalIndex.from_arrays(exon_starts, exon_ends, closed='left')
+
+                # vectorized lookup: returns -1 for positions not in any interval
+                exon_idx = intervals_index.get_indexer(positions).astype(int)
+
+                # ensure all positions map to an exon; if not, raise so we know
+                # something unexpected occurred
+                assert np.all(exon_idx >= 0), f"Position(s) not assigned to any exon for transcript {transcript[0].transcript_id}"
+
+                # compute base offsets within exon and bin indices; account for
+                # transcript strand so offsets are measured from the transcript
+                # 5' end of the exon.
+                if transcript[0].strand == "-":
+                    offsets = exon_ends[exon_idx] - positions - 1
+                else:
+                    offsets = positions - exon_starts[exon_idx]
+
+                lengths = exon_lens[exon_idx]
+                # avoid division by zero
+                lengths_nonzero = np.where(lengths == 0, 1, lengths)
+                bin_idx = np.floor(offsets * b / lengths_nonzero).astype(int)
+                bin_idx = np.clip(bin_idx, 0, b-1)
+
+                # composite index to aggregate per-exon per-bin
+                composite = exon_idx * b + bin_idx
+                minlength = n_exons * b
+                agg = np.bincount(composite, weights=values, minlength=minlength)
+                agg = agg.reshape(n_exons, b)
+
+                # sum across exons to get region bins
+                region_bins = agg.sum(axis=0)
+
+                # apply length normalization at the region level to match
+                # non-aggregate behaviour (scale by b / region_length)
+                if length_norm:
+                    region_bins = region_bins * (float(b) / float(l))
+
+            # Use the region-level binned counts (already length-normalized if requested)
+            combined = pd.Series(region_bins, index=range(b))
+            region_binned_counts.append(combined)
+            valid_names.append(n)
+
+    else:
+        # non-aggregate: bin each region as a whole
+        if len(filtered) == 0:
+            empty_index = pd.MultiIndex(levels=[names, []], codes=[[], []], names=["region", "region_bin"])
+            return pd.Series(dtype=float, index=empty_index)
+
+        region_exons_f, region_lengths_f, valid_names, bins_f = zip(*filtered)
+
+        region_counts = [count_transcript(t, getter) for t in region_exons_f]
+        region_binned_counts = [bin_counts(c, l, b) for c, l, b in
+                                zip(region_counts, region_lengths_f, bins_f)]
+
+        if length_norm:
+            region_binned_counts = [x * (float(b) / float(l)) for x, l, b in
+                                    zip(region_binned_counts, region_lengths_f, bins_f)]
+
+    # build final profile
+    if len(region_binned_counts) == 0:
+        empty_index = pd.MultiIndex(levels=[names, []], codes=[[], []], names=["region", "region_bin"])
+        return pd.Series(dtype=float, index=empty_index)
+
+    profile = pd.concat(region_binned_counts, keys=valid_names, names=["region", "region_bin"])
+
+    t_end = time.perf_counter()
+    logger.debug("transcript_region_meta: total_time=%.6fs, count_time=%.6fs, regions=%d, exons=%d", \
+                 (t_end - t_start), t_count, n_regions_processed, n_exons_processed)
+
     return profile
