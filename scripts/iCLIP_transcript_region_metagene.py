@@ -123,7 +123,7 @@ def main(argv=None):
                       help="Use this wig file instead of a BAM file to get clip density"
                       "may be used as only wig file, or may be provided together with"
                       "--minus-wig for standed computation")
-    parser.add_option("--minus_wig", dest="minus_wig", default=None,
+    parser.add_option("--minus-wig", dest="minus_wig", default=None,
                       help="Use this to provide stranded wig data")
     parser.add_option("--bed", dest="bedfile", default=None,
                       help="Use bed file with signal instead of bam")
