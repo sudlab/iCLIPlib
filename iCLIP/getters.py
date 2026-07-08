@@ -235,14 +235,14 @@ def _wig_getter(plus_wig, minus_wig, contig, start=0, end=None,
         return result
  
     elif strand == "-":
-        counts = -1 * minus_wig.get_as_array(contig.encode(), start, end)
+        counts = abs(minus_wig.get_as_array(contig.encode(), start, end))
         result = pd.Series(
             counts, index=np.arange(start, end, dtype="float")).dropna()
         return result
 
     elif strand == ".":
         plus_counts = plus_wig.get_as_array(contig.encode(), start, end)
-        minus_counts = -1 * minus_wig.get_as_array(contig.encode(), start, end)
+        minus_counts = abs(minus_wig.get_as_array(contig.encode(), start, end))
         plus_result = pd.Series(
             plus_counts, index=np.arange(start, end, dtype="float")).dropna()
         minus_result = pd.Series(
@@ -266,6 +266,10 @@ def _bam_getter(bamfile, contig, start=0, end=None, strand=".", dtype="uint16",
                               start=max(start-1, 0),
                               end=end+1)
     except ValueError as e:
+        if "fetch called on bamfile without index" in str(e):
+            E.error("Cannot find the index for {bamfile.filename}")
+            raise
+        
         E.warning(e)
         E.warning("Skipping intervals on contig %s as not present in bam"
                   % contig)
